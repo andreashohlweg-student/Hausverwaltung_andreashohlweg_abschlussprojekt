@@ -1,0 +1,11 @@
+services:
+  web:
+    build:
+      context: .
+      target: production
+    ports:
+      - "127.0.0.1:3000:3000"
+    init: true
+    env_file:
+      - .env.local
+    restart: unless-stopped

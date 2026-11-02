@@ -1,0 +1,10 @@
+.env*
+!.env.example
+.git
+.neon
+.neon-cache
+node_modules
+.next
+*.log
+*.tsbuildinfo
+.DS_Store

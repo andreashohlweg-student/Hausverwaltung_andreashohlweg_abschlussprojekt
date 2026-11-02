@@ -1,0 +1,132 @@
+import type { Database } from "./domain";
+
+/** Fictional demo records. Never use real personal data in this prototype. */
+export const mockData: Database = {
+  version: 1,
+  owners: [
+    {
+      id: "owner-1",
+      name: "Clara Hoffmann",
+      email: "clara.hoffmann@example.com",
+      phone: "030 555 0101",
+    },
+    {
+      id: "owner-2",
+      name: "Thomas Berger",
+      email: "thomas.berger@example.com",
+      phone: "030 555 0102",
+    },
+    {
+      id: "owner-3",
+      name: "Elisabeth Weber",
+      email: "elisabeth.weber@example.com",
+      phone: "030 555 0103",
+    },
+    {
+      id: "owner-4",
+      name: "Michael Winter",
+      email: "michael.winter@example.com",
+      phone: "030 555 0104",
+    },
+  ],
+  properties: [
+    {
+      id: "property-1",
+      name: "Haus am Park",
+      street: "Parkstraße 12",
+      postalCode: "10405",
+      city: "Berlin",
+      units: 8,
+      ownerId: "owner-1",
+    },
+    {
+      id: "property-2",
+      name: "Lindenhof",
+      street: "Lindenallee 24",
+      postalCode: "10437",
+      city: "Berlin",
+      units: 12,
+      ownerId: "owner-2",
+    },
+    {
+      id: "property-3",
+      name: "Stadtvilla West",
+      street: "Kantstraße 8",
+      postalCode: "10623",
+      city: "Berlin",
+      units: 4,
+      ownerId: "owner-3",
+    },
+    {
+      id: "property-4",
+      name: "Gartenquartier",
+      street: "Gartenstraße 36",
+      postalCode: "10115",
+      city: "Berlin",
+      units: 6,
+      ownerId: "owner-1",
+    },
+  ],
+  tenants: [
+    {
+      id: "tenant-1",
+      name: "Anna Schneider",
+      email: "anna.schneider@example.com",
+      phone: "030 555 0201",
+      propertyId: "property-1",
+      apartment: "1. OG links",
+    },
+    {
+      id: "tenant-2",
+      name: "Jonas Fischer",
+      email: "jonas.fischer@example.com",
+      phone: "030 555 0202",
+      propertyId: "property-1",
+      apartment: "2. OG rechts",
+    },
+    {
+      id: "tenant-3",
+      name: "Lea Wagner",
+      email: "lea.wagner@example.com",
+      phone: "030 555 0203",
+      propertyId: "property-2",
+      apartment: "EG links",
+    },
+    {
+      id: "tenant-4",
+      name: "Paul Neumann",
+      email: "paul.neumann@example.com",
+      phone: "030 555 0204",
+      propertyId: "property-3",
+      apartment: "1. OG",
+    },
+    {
+      id: "tenant-5",
+      name: "Marie Schulz",
+      email: "marie.schulz@example.com",
+      phone: "030 555 0205",
+      propertyId: "",
+      apartment: "",
+    },
+  ],
+  employees: [
+    {
+      id: "employee-1",
+      name: "Sophie Krüger",
+      email: "sophie.krueger@example.com",
+      role: "Verwaltung",
+    },
+    {
+      id: "employee-2",
+      name: "David Braun",
+      email: "david.braun@example.com",
+      role: "Buchhaltung",
+    },
+    {
+      id: "employee-3",
+      name: "Lena Wolf",
+      email: "lena.wolf@example.com",
+      role: "Technik",
+    },
+  ],
+};

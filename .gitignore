@@ -1,0 +1,14 @@
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+.env*
+!.env.example
+.DS_Store
+coverage/
+.vercel/
+.neon/
+.neon-cache/
+*.log
+.neon
+.vercel
