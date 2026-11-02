@@ -11,6 +11,11 @@ if (!process.env.NEON_BRANCH?.startsWith("hausportal-check-"))
     "E2E-Tests dürfen nur auf einem isolierten hausportal-check-Branch laufen.",
   );
 const base = process.env.E2E_BASE_URL || "http://localhost:3002";
+const mailRecipient = process.env.E2E_MAIL_TO;
+if (!mailRecipient || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mailRecipient))
+  throw new Error(
+    "E2E_MAIL_TO muss eine ausdrücklich gewählte Testempfängeradresse enthalten. Der Test sendet eine Einladung dorthin.",
+  );
 const client = new pg.Client({
   connectionString: process.env.DATABASE_URL_UNPOOLED,
 });
@@ -97,7 +102,8 @@ const ids = {
 try {
   // Remove only this suite's previous mail fixture on its isolated branch.
   await client.query(
-    "DELETE FROM hausportal.owners WHERE id LIKE 'e2e-mail-%' AND email='delivered@resend.dev'",
+    "DELETE FROM hausportal.owners WHERE id LIKE 'e2e-mail-%' AND email=$1",
+    [mailRecipient],
   );
   const anonymous = new BrowserSession();
   assert.equal((await anonymous.request("/api/data")).status, 401);
@@ -294,7 +300,7 @@ try {
   snapshot.json.data.owners.push({
     id: `e2e-mail-${run}`,
     name: "E2E Mailversand",
-    email: "delivered@resend.dev",
+    email: mailRecipient,
     phone: "",
   });
   const saved = await sessions.admin.request("/api/data", {
@@ -366,7 +372,7 @@ try {
   );
   assert.equal(invitationRow.rows[0].delivery_status, "sent");
   assert.equal(invitationRow.rows[0].role, "owner");
-  pass("Admin → Einladung → Neon Function → Resend-Testadresse erfolgreich");
+  pass("Admin → Einladung → Neon Function → SMTP-Versand erfolgreich");
   console.log(
     `E2E erfolgreich: ${passed} Prüfungen bestanden. Ausschließlich isolierter Testbranch verwendet.`,
   );

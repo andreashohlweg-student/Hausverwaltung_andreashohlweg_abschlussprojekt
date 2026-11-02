@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import pg from "pg";
-import { Resend } from "resend";
 import {
   newInvitationToken,
   hashInvitationToken,
@@ -9,13 +8,31 @@ process.loadEnvFile(".env.local");
 const {
   BOOTSTRAP_ADMIN_EMAIL: email,
   APP_URL,
-  RESEND_API_KEY,
-  MAIL_FROM,
   DATABASE_URL,
+  NEON_FUNCTION_HELLO_BASE_URL,
+  FUNCTION_ORIGIN_SECRET,
 } = process.env;
-if (!email || !APP_URL || !RESEND_API_KEY || !MAIL_FROM || !DATABASE_URL)
+if (
+  !email ||
+  !APP_URL ||
+  !DATABASE_URL ||
+  !NEON_FUNCTION_HELLO_BASE_URL ||
+  !FUNCTION_ORIGIN_SECRET
+)
   throw new Error(
     "Admin-Adresse, App-URL und Mailversand müssen eingerichtet sein.",
+  );
+const mailCheck = await fetch(
+  new URL("smtp-check", NEON_FUNCTION_HELLO_BASE_URL),
+  {
+    headers: { "x-secret": FUNCTION_ORIGIN_SECRET },
+    redirect: "manual",
+    signal: AbortSignal.timeout(25000),
+  },
+);
+if (!mailCheck.ok)
+  throw new Error(
+    "Der SMTP-Versand der Neon Function ist noch nicht bereit. Bitte zuerst npm run smtp:check ausführen.",
   );
 const client = new pg.Client({ connectionString: DATABASE_URL });
 await client.connect();
@@ -40,17 +57,20 @@ try {
     [id, email.toLowerCase(), hashInvitationToken(token)],
   );
   await client.query("COMMIT");
-  const link = new URL(`/einladung/${token}`, APP_URL).href;
-  const result = await new Resend(RESEND_API_KEY).emails.send(
-    {
-      from: MAIL_FROM,
-      to: email,
-      subject: "Administratorzugang zum Hausportal",
-      text: `Lege dein Passwort für den Administratorzugang fest:\n\n${link}\n\nDer Link ist 7 Tage gültig und kann einmal verwendet werden.`,
+  const sent = await fetch(NEON_FUNCTION_HELLO_BASE_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-secret": FUNCTION_ORIGIN_SECRET,
     },
-    { idempotencyKey: `hausportal-admin-${id}` },
-  );
-  if (result.error) throw new Error(`Resend: ${result.error.message}`);
+    body: JSON.stringify({ invitationId: id, token }),
+    redirect: "manual",
+    signal: AbortSignal.timeout(25000),
+  });
+  if (!sent.ok)
+    throw new Error(
+      "Die Administrator-Einladung konnte nicht über SMTP versendet werden.",
+    );
   await client.query(
     "UPDATE hausportal.invitations SET delivery_status='sent' WHERE id=$1",
     [id],

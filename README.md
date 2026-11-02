@@ -10,7 +10,7 @@ Hausverwaltung mit Next.js App Router, TypeScript, Neon Postgres, Neon Auth und 
 - Eigentümer sehen im Portal ausschließlich ihre Objekte. Mieter sehen ihr zugeordnetes Objekt und ihre Wohnungsbezeichnung. Die API prüft Rollen unabhängig von der Navigation.
 - Mitarbeiterrollen sind beschreibende Verwaltungsdaten; Mitarbeiter erhalten in diesem Schritt keinen eigenen Login.
 - Ein fehlgeschlagener Mailversand wird angezeigt. Der Kontakt bleibt gespeichert; die Einladung lässt sich aus der Liste erneut senden.
-- Abmelden und Passwort-Rücksetzung sind vorhanden. Passwort-Rücksetzungen laufen über den Maildienst von Neon Auth, Einladungen über Resend.
+- Abmelden und Passwort-Rücksetzung sind vorhanden. Passwort-Rücksetzungen laufen über den Maildienst von Neon Auth, Einladungen über Gmail-SMTP.
 
 Der erste Administrator wird per CLI eingeladen:
 
@@ -64,26 +64,40 @@ Er liest `.env.local` erst beim Containerstart ein. Der Build benötigt keine pr
 | `src/lib/domain.ts`    | Fachliche Datentypen, Zuordnungen und Löschfolgen.                            |
 | `src/lib/server`       | Serverseitige Datenbank- und Zugriffslogik.                                   |
 | `db/migrations`        | Versionierte SQL-Migrationen im Schema `hausportal`.                          |
-| `hello.ts`             | Neon Function: authentifizierter Einladungsversand über Resend.               |
+| `hello.ts`             | Neon Function: authentifizierter Einladungsversand über SMTP.                 |
 | `neon.ts`              | Deklaration von Neon Auth und Function-Konfiguration.                         |
 
 Der Clientzustand wird vom Server initialisiert und über `/api/data` gespeichert. Änderungen laufen transaktional; eine Revision verhindert das Überschreiben neuerer Datenstände. Postgres-Verbindungen verwenden `pg` mit begrenztem Pool, auf Vercel mit `attachDatabasePool`. Migrationen nutzen die direkte Datenbankverbindung. Auth-Cookies verwaltet das Neon-SDK. Der Next.js-Server ruft die Function mit einem privaten gemeinsamen Geheimnis auf; dieses gelangt nicht in den Browser.
 
 Das Dashboard enthält Schnellaktionen und anklickbare Zuordnungskacheln. Routen: `/dashboard`, `/eigentuemer`, `/mieter`, `/objekte`, `/mitarbeiter`; jeweils Listen und Formularseiten. Die Eigentümerauswahl zeigt zuerst alphabetisch Eigentümer ohne Objekt mit „(offen)“, danach die übrigen.
 
-## Resend und Absenderdomain
+## Gmail-SMTP
 
-`onboarding@resend.dev` ist zum Testen vorgesehen. Ohne eigene verifizierte Domain können reguläre Mails nur an die Adresse des eigenen Resend-Kontos geschickt werden. Für Einladungen an beliebige Eigentümer und Mieter:
+Für dieses Abschlussprojekt werden Einladungen über ein Gmail-Konto versendet. Eine eigene Absenderdomain ist dafür nicht erforderlich. Der Absender entspricht immer `SMTP_USER`.
 
-1. Eine eigene Domain bei einem Domainanbieter registrieren oder eine bestehende verwenden.
-2. In Resend unter **Domains → Add domain** etwa `mail.deine-domain.de` hinzufügen.
-3. Die von Resend angezeigten DNS-Einträge beim Domainanbieter übernehmen und die Verifizierung abwarten.
-4. `MAIL_FROM` auf zum Beispiel `Hausportal <einladungen@mail.deine-domain.de>` setzen und die Neon Function erneut deployen.
+1. Im verwendeten Google-Konto die Zwei-Faktor-Anmeldung aktivieren.
+2. Unter [Google App-Passwörter](https://myaccount.google.com/apppasswords) ein eigenes App-Passwort für „Hausportal“ erstellen. Google kann diese Möglichkeit bei bestimmten Kontotypen oder Schutzprogrammen einschränken.
+3. In der privaten `.env.local` hinterlegen:
 
-Ein separates E-Mail-Postfach für die Absenderadresse ist für den Versand nicht erforderlich. Domainregistrierung kann kostenpflichtig sein; die Vercel-Adresse `*.vercel.app` ist keine eigene verwaltbare Absenderdomain.
+```dotenv
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_USER=dein-konto@gmail.com
+SMTP_PASS=DEIN_GOOGLE_APP_PASSWORT
+```
 
-- [Resend: Domains](https://resend.com/docs/dashboard/domains/introduction)
-- [Resend: Einschränkung der Testdomain](https://resend.com/docs/knowledge-base/403-error-resend-dev-domain)
+Das normale Google-Passwort nicht verwenden. Bei einem anderen Absender `SMTP_USER` entsprechend ändern. Zugangsdaten nie in den Chat oder ins Repository kopieren. Das App-Passwort muss nach ausdrücklicher Freigabe auch als private Variable der Neon Function hinterlegt werden; Vercel benötigt es nicht.
+
+```bash
+npm run smtp:check
+```
+
+Die Prüfung stellt die TLS-Verbindung her und prüft die Anmeldung, ohne eine Mail zu senden. Anschließend die Function deployen und `npm run admin:invite` für die erste tatsächliche Einladung ausführen. Erst eine erfolgreiche SMTP-Prüfung und ein tatsächlicher Versand belegen die funktionierende Gmail-Anbindung. Ein erfolgreicher Build allein reicht dafür nicht.
+
+Port 465 verwendet direkt TLS; alternativ ist Port 587 mit zwingendem STARTTLS möglich. Zertifikate werden geprüft. Gmail ist für kleine Test-/Projektmengen geeignet; Google kann Versand begrenzen oder Serveranmeldungen blockieren. Für größere Produktivmengen später einen SMTP-Dienst einsetzen. Passwort-Rücksetzungen bleiben beim Maildienst von Neon Auth.
+
+- [Google: Mit App-Passwörtern anmelden](https://support.google.com/mail/answer/185833?hl=de)
+- [Nodemailer: Gmail](https://nodemailer.com/guides/using-gmail)
 
 ## Neon und Vercel
 
@@ -97,7 +111,7 @@ npm run db:migrate
 
 `neon deploy` stellt die Services aus `neon.ts` bereit und zieht die Service-Variablen in die lokale Env-Datei. Bei Testbranches `--no-env-pull` verwenden, damit die Produktionskonfiguration nicht überschrieben wird. Produktions-App-URL als vertrauenswürdige Domain in Neon Auth eintragen.
 
-Vercel benötigt `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `NEON_AUTH_BASE_URL`, `NEON_AUTH_JWKS_URL`, `NEON_AUTH_COOKIE_SECRET`, `NEON_FUNCTION_HELLO_BASE_URL`, `FUNCTION_ORIGIN_SECRET` und `APP_URL`. Der Resend-Schlüssel wird für den laufenden Einladungsdienst nur bei Neon Functions benötigt. Lokale CLI-Skripte verwenden ihn aus `.env.local`. `APP_URL` muss auf die öffentlich erreichbare App zeigen, bevor Einladungen versendet werden.
+Vercel benötigt `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `NEON_AUTH_BASE_URL`, `NEON_AUTH_JWKS_URL`, `NEON_AUTH_COOKIE_SECRET`, `NEON_FUNCTION_HELLO_BASE_URL`, `FUNCTION_ORIGIN_SECRET` und `APP_URL`. Die SMTP-Zugangsdaten werden für den laufenden Einladungsdienst nur bei Neon Functions benötigt. Lokale CLI-Skripte verwenden sie aus `.env.local`. `APP_URL` muss auf die öffentlich erreichbare App zeigen, bevor Einladungen versendet werden.
 
 Migrationen werden bewusst separat ausgeführt, statt bei jedem Frontend-Build. Vorschau-Deployments erhalten nicht automatisch die Produktionsgeheimnisse oder einen eigenen Datenbankbranch.
 
@@ -116,7 +130,7 @@ Der Integrationstest verwendet echte isolierte Neon-Services und zufällig erzeu
 node --env-file=/ABSOLUTER/PFAD/test.env scripts/test-e2e.mjs
 ```
 
-Geprüft werden Registrierung aller drei Rollen, Sessions, wiederholte Anmeldung, Rechte und Datentrennung, abgelaufene/verwendete Links, Datenbankspeicherung, Revisionskonflikte sowie App → Function → Datenbank und Resend-Testversand. Das Testskript verwendet ausschließlich Resends Testadresse `delivered@resend.dev` für seinen Versandtest. Den isolierten Testbranch nach Abschluss löschen.
+Geprüft werden Registrierung aller drei Rollen, Sessions, wiederholte Anmeldung, Rechte und Datentrennung, abgelaufene/verwendete Links, Datenbankspeicherung, Revisionskonflikte sowie App → Function → Datenbank und SMTP-Versand. Für den Versandtest muss `E2E_MAIL_TO` ausdrücklich auf ein eigenes Testpostfach gesetzt werden; der Test versendet eine echte Einladung dorthin. Ohne diese Variable verweigert er den Start. Den isolierten Testbranch nach Abschluss löschen.
 
 ## Weitere fachliche Schritte
 

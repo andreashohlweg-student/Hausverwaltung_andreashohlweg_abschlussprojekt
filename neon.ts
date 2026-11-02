@@ -10,10 +10,10 @@ export default defineConfig({
       env: {
         FUNCTION_ORIGIN_SECRET: process.env.FUNCTION_ORIGIN_SECRET!,
         APP_URL: process.env.APP_URL!,
-        MAIL_FROM: process.env.MAIL_FROM!,
-        ...(process.env.RESEND_API_KEY
-          ? { RESEND_API_KEY: process.env.RESEND_API_KEY }
-          : {}),
+        SMTP_HOST: process.env.SMTP_HOST || "smtp.gmail.com",
+        SMTP_PORT: process.env.SMTP_PORT || "465",
+        ...(process.env.SMTP_USER ? { SMTP_USER: process.env.SMTP_USER } : {}),
+        ...(process.env.SMTP_PASS ? { SMTP_PASS: process.env.SMTP_PASS } : {}),
       },
     },
   },

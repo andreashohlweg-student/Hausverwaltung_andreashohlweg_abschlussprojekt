@@ -1,7 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { Pool } from "pg";
 import { attachDatabasePool } from "@neon/functions";
-import { Resend } from "resend";
+import { sendInvitationEmail, verifySmtp } from "./src/lib/mail";
 import { z } from "zod";
 
 const secret = process.env.FUNCTION_ORIGIN_SECRET;
@@ -27,6 +27,20 @@ export default {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     try {
       if (request.method === "GET") {
+        if (new URL(request.url).pathname === "/smtp-check") {
+          try {
+            await verifySmtp();
+            return Response.json(
+              { ok: true },
+              { headers: { "Cache-Control": "no-store" } },
+            );
+          } catch {
+            return Response.json(
+              { error: "SMTP verification failed" },
+              { status: 503 },
+            );
+          }
+        }
         const { rows } = await pool.query(
           "SELECT now() AS database_time,(SELECT count(*)::int FROM hausportal.owners) AS owners,(SELECT count(*)::int FROM hausportal.tenants) AS tenants,(SELECT count(*)::int FROM hausportal.properties) AS properties",
         );
@@ -59,33 +73,22 @@ export default {
           { status: 410 },
         );
       if (
-        !process.env.RESEND_API_KEY ||
-        !process.env.MAIL_FROM ||
+        !process.env.SMTP_USER ||
+        !process.env.SMTP_PASS ||
         !process.env.APP_URL
       )
         return Response.json(
           { error: "Mail delivery not configured" },
           { status: 503 },
         );
-      const link = new URL(`/einladung/${token}`, process.env.APP_URL).href;
-      const result = await new Resend(process.env.RESEND_API_KEY).emails.send(
-        {
-          from: process.env.MAIL_FROM,
-          to: invitation.email,
-          subject:
-            invitation.role === "admin"
-              ? "Administratorzugang zum Hausportal"
-              : "Einladung zum Hausportal",
-          text: `Hallo ${invitation.name},\n\nlege über diesen Link dein Passwort für das Hausportal fest:\n\n${link}\n\nDer Link ist 7 Tage gültig und kann einmal verwendet werden.`,
-        },
-        { idempotencyKey: `hausportal-invitation-${invitationId}` },
-      );
-      if (result.error) {
+      try {
+        await sendInvitationEmail({ ...invitation, token });
+      } catch {
         await pool.query(
           "UPDATE hausportal.invitations SET delivery_status='failed' WHERE id=$1",
           [invitationId],
         );
-        console.error("Resend-Versand fehlgeschlagen:", result.error.name);
+        console.error("SMTP-Versand fehlgeschlagen.");
         return Response.json(
           { error: "Email delivery failed" },
           { status: 502 },
