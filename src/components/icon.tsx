@@ -5,6 +5,7 @@ export type IconName =
   | "owners"
   | "tenants"
   | "properties"
+  | "units"
   | "employees"
   | "plus"
   | "arrow"
@@ -43,6 +44,7 @@ const paths: Record<IconName, React.ReactNode> = {
       <path d="M4 21V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17M16 10h4v11M2 21h20M8 7h4M8 11h4M8 15h4M9 21v-3h2v3" />
     </>
   ),
+  units: <path d="M5 21h14M7 21V3h10v18M13 12h.01" />,
   employees: (
     <>
       <rect x="3" y="7" width="18" height="14" rx="2" />

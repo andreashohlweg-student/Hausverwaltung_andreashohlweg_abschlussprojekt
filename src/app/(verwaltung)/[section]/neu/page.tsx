@@ -14,10 +14,19 @@ export async function generateMetadata({
 }
 export default async function Page({
   params,
+  searchParams,
 }: {
   params: Promise<{ section: string }>;
+  searchParams: Promise<{ gebaeude?: string | string[] }>;
 }) {
   const kind = kindForSection((await params).section);
+  const { gebaeude } = await searchParams;
   if (!kind) notFound();
-  return <EntityForm key={kind} kind={kind} />;
+  return (
+    <EntityForm
+      key={kind}
+      kind={kind}
+      building={typeof gebaeude === "string" ? gebaeude : undefined}
+    />
+  );
 }

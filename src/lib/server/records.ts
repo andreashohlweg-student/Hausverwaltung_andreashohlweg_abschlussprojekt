@@ -1,4 +1,11 @@
-import type { Database, Owner, Tenant, Property, Employee } from "@/lib/domain";
+import type {
+  Database,
+  Owner,
+  Tenant,
+  Property,
+  Unit,
+  Employee,
+} from "@/lib/domain";
 import type { AccountStatus } from "@/lib/account";
 import { getPool } from "./db";
 import { RequestError } from "./access";
@@ -14,10 +21,16 @@ export async function loadDatabase(): Promise<{
       "SELECT id,name,email,phone FROM hausportal.owners ORDER BY name,id",
     );
     const properties = await client.query<Property>(
-      'SELECT id,name,street,postal_code AS "postalCode",city,units,coalesce(owner_id,\'\') AS "ownerId" FROM hausportal.properties ORDER BY name,id',
+      'SELECT id,name,street,postal_code AS "postalCode",city,coalesce(owner_id,\'\') AS "ownerId" FROM hausportal.properties ORDER BY name,id',
+    );
+    const units = await client.query<Unit>(
+      'SELECT id,name,property_id AS "propertyId" FROM hausportal.units ORDER BY name,id',
     );
     const tenants = await client.query<Tenant>(
-      "SELECT id,name,email,phone,coalesce(property_id,'') AS \"propertyId\",apartment FROM hausportal.tenants ORDER BY name,id",
+      `SELECT t.id,t.name,t.email,t.phone,coalesce(u.property_id,t.property_id,'') AS "propertyId",
+        coalesce(t.unit_id,'') AS "unitId"
+      FROM hausportal.tenants t LEFT JOIN hausportal.units u ON t.unit_id=u.id
+      ORDER BY t.name,t.id`,
     );
     const employees = await client.query<Employee>(
       "SELECT id,name,email,role FROM hausportal.employees ORDER BY name,id",
@@ -28,9 +41,10 @@ export async function loadDatabase(): Promise<{
     await client.query("COMMIT");
     return {
       data: {
-        version: 1,
+        version: 2,
         owners: owners.rows,
         properties: properties.rows,
+        units: units.rows,
         tenants: tenants.rows,
         employees: employees.rows,
       },
@@ -85,27 +99,24 @@ export async function saveDatabase(
       );
     for (const r of data.properties)
       await client.query(
-        "INSERT INTO hausportal.properties(id,name,street,postal_code,city,units,owner_id) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(id) DO UPDATE SET name=excluded.name,street=excluded.street,postal_code=excluded.postal_code,city=excluded.city,units=excluded.units,owner_id=excluded.owner_id",
-        [
-          r.id,
-          r.name,
-          r.street,
-          r.postalCode,
-          r.city,
-          r.units,
-          r.ownerId || null,
-        ],
+        "INSERT INTO hausportal.properties(id,name,street,postal_code,city,owner_id) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(id) DO UPDATE SET name=excluded.name,street=excluded.street,postal_code=excluded.postal_code,city=excluded.city,owner_id=excluded.owner_id",
+        [r.id, r.name, r.street, r.postalCode, r.city, r.ownerId || null],
+      );
+    for (const r of data.units)
+      await client.query(
+        "INSERT INTO hausportal.units(id,name,property_id) VALUES($1,$2,$3) ON CONFLICT(id) DO UPDATE SET name=excluded.name,property_id=excluded.property_id",
+        [r.id, r.name, r.propertyId],
       );
     for (const r of data.tenants)
       await client.query(
-        "INSERT INTO hausportal.tenants(id,name,email,phone,property_id,apartment) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(id) DO UPDATE SET name=excluded.name,email=excluded.email,phone=excluded.phone,property_id=excluded.property_id,apartment=excluded.apartment",
+        "INSERT INTO hausportal.tenants(id,name,email,phone,property_id,unit_id) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(id) DO UPDATE SET name=excluded.name,email=excluded.email,phone=excluded.phone,property_id=excluded.property_id,unit_id=excluded.unit_id",
         [
           r.id,
           r.name,
           r.email.toLowerCase(),
           r.phone,
-          r.propertyId || null,
-          r.apartment,
+          r.unitId ? null : r.propertyId || null,
+          r.unitId || null,
         ],
       );
     for (const r of data.employees)
@@ -115,6 +126,7 @@ export async function saveDatabase(
       );
     for (const [table, ids] of [
       ["tenants", data.tenants],
+      ["units", data.units],
       ["properties", data.properties],
       ["owners", data.owners],
       ["employees", data.employees],

@@ -19,10 +19,7 @@ export function Dashboard() {
   const tenantsWithoutProperty = data.tenants.filter((tenant) =>
     withoutAssignment("tenants", tenant, data),
   ).length;
-  const unitCount = data.properties.reduce(
-    (sum, property) => sum + property.units,
-    0,
-  );
+  const unitCount = data.units.length;
   const shortcuts: EntityKind[] = [
     "owners",
     "tenants",
@@ -38,7 +35,7 @@ export function Dashboard() {
         </div>
       </div>
       <div className="stats-grid">
-        {(Object.keys(entities) as EntityKind[]).map((kind, index) => (
+        {shortcuts.map((kind, index) => (
           <Link
             href={`/${entities[kind].section}`}
             className="stat-card"

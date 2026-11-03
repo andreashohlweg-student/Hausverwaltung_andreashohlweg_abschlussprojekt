@@ -12,13 +12,19 @@ export default async function PortalPage() {
     user.role === "owner"
       ? (
           await getPool().query(
-            "SELECT id,name,street,postal_code,city,units FROM hausportal.properties WHERE owner_id=$1 ORDER BY name",
+            `SELECT p.id,p.name,p.street,p.postal_code,p.city,
+              ARRAY(SELECT u.name FROM hausportal.units u WHERE u.property_id=p.id ORDER BY u.name,u.id) AS units
+            FROM hausportal.properties p WHERE p.owner_id=$1 ORDER BY p.name`,
             [user.ownerId],
           )
         ).rows
       : (
           await getPool().query(
-            "SELECT p.id,p.name,p.street,p.postal_code,p.city,t.apartment FROM hausportal.properties p JOIN hausportal.tenants t ON t.property_id=p.id WHERE t.id=$1",
+            `SELECT p.id,p.name,p.street,p.postal_code,p.city,u.name AS unit_name
+            FROM hausportal.tenants t
+            LEFT JOIN hausportal.units u ON t.unit_id=u.id
+            JOIN hausportal.properties p ON p.id=coalesce(u.property_id,t.property_id)
+            WHERE t.id=$1`,
             [user.tenantId],
           )
         ).rows;
@@ -51,9 +57,17 @@ export default async function PortalPage() {
                   {property.postal_code} {property.city}
                 </p>
                 {user.role === "owner" ? (
-                  <p>{property.units} Wohneinheiten</p>
+                  property.units.length ? (
+                    <ul>
+                      {property.units.map((name: string) => (
+                        <li key={name}>{name}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p>Keine Einheiten erfasst.</p>
+                  )
                 ) : (
-                  <p>{property.apartment}</p>
+                  <p>{property.unit_name ?? "Keine Wohnung zugeordnet."}</p>
                 )}
               </article>
             ))

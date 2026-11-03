@@ -10,6 +10,7 @@ import {
   type EntityKind,
   type Owner,
   type Tenant,
+  type Unit,
   type Property,
   type Employee,
   type Records,
@@ -37,7 +38,19 @@ export function EntityList({ kind }: { kind: EntityKind }) {
   const [notice, setNotice] = useState("");
   const dialog = useRef<HTMLDialogElement>(null);
   const config = entities[kind];
-  const unassigned = searchParams.get("filter") === "unassigned";
+  const canFilterUnassigned = kind !== "employees" && kind !== "units";
+  const unassigned =
+    canFilterUnassigned && searchParams.get("filter") === "unassigned";
+  const building = kind === "units" ? (searchParams.get("gebaeude") ?? "") : "";
+  const buildingQuery = building
+    ? `?gebaeude=${encodeURIComponent(building)}`
+    : "";
+  const listHref = `/${config.section}`;
+  const createHref = `${listHref}/neu${buildingQuery}`;
+  const scopedRecords =
+    kind === "units" && building
+      ? data.units.filter((unit) => unit.propertyId === building)
+      : data[kind];
 
   useEffect(() => {
     if (pendingDelete) dialog.current?.showModal();
@@ -61,18 +74,23 @@ export function EntityList({ kind }: { kind: EntityKind }) {
         .filter((property) => property.ownerId === record.id)
         .map((property) => property.name)
         .join(" ");
-    if (kind === "tenants")
-      extra =
-        data.properties.find(
-          (property) => property.id === (record as Tenant).propertyId,
-        )?.name ?? "";
+    if (kind === "tenants" || kind === "units") {
+      const property = data.properties.find(
+        (property) => property.id === (record as Tenant | Unit).propertyId,
+      );
+      const unit =
+        kind === "tenants"
+          ? data.units.find((unit) => unit.id === (record as Tenant).unitId)
+          : undefined;
+      extra = `${property?.name ?? ""} ${property?.street ?? ""} ${unit?.name ?? ""}`;
+    }
     if (kind === "properties")
       extra =
         data.owners.find((owner) => owner.id === (record as Property).ownerId)
           ?.name ?? "";
     return normalize(`${Object.values(record).join(" ")} ${extra}`);
   }
-  const rows = data[kind].filter(
+  const rows = scopedRecords.filter(
     (record) =>
       (!unassigned || withoutAssignment(kind, record, data)) &&
       searchable(record).includes(normalize(query.trim())),
@@ -88,7 +106,7 @@ export function EntityList({ kind }: { kind: EntityKind }) {
     if (await save(removeRecord(data, kind, pendingDelete.id))) {
       setNotice(`${config.singular} wurde gelöscht.`);
       router.replace(
-        `/${config.section}${unassigned ? "?filter=unassigned" : ""}`,
+        `${listHref}${unassigned ? "?filter=unassigned" : buildingQuery}`,
         { scroll: false },
       );
       closeDialog();
@@ -125,6 +143,7 @@ export function EntityList({ kind }: { kind: EntityKind }) {
     }
     if (kind === "tenants") {
       const tenant = record as Tenant;
+      const unit = data.units.find((unit) => unit.id === tenant.unitId);
       const property = data.properties.find(
         (property) => property.id === tenant.propertyId,
       );
@@ -141,7 +160,7 @@ export function EntityList({ kind }: { kind: EntityKind }) {
               <>
                 <span className="cell-primary">{property.name}</span>
                 <span className="cell-secondary">
-                  {tenant.apartment || "Wohnung noch offen"}
+                  {unit?.name ?? "Wohnung noch offen"}
                 </span>
               </>
             ) : (
@@ -170,7 +189,37 @@ export function EntityList({ kind }: { kind: EntityKind }) {
             )}
           </td>
           <td>
-            <span className="unit-label">{property.units}</span>
+            <Link
+              className="edit-link"
+              href={`/einheiten?gebaeude=${encodeURIComponent(property.id)}`}
+              aria-label={`Einheiten für ${property.name} verwalten`}
+            >
+              {
+                data.units.filter((unit) => unit.propertyId === property.id)
+                  .length
+              }{" "}
+              Einheiten
+            </Link>
+          </td>
+        </>
+      );
+    }
+    if (kind === "units") {
+      const property = data.properties.find(
+        (item) => item.id === (record as Unit).propertyId,
+      );
+      const tenants = data.tenants.filter(
+        (tenant) => tenant.unitId === record.id,
+      );
+      return (
+        <>
+          <td>
+            <span className="cell-primary">{property?.name}</span>
+            <span className="cell-secondary">{property?.street}</span>
+          </td>
+          <td>
+            {tenants.map((tenant) => tenant.name).join(", ") ||
+              "Ohne Mieterzuordnung"}
           </td>
         </>
       );
@@ -197,10 +246,10 @@ export function EntityList({ kind }: { kind: EntityKind }) {
         <div>
           <h1>
             {config.plural} verwalten
-            <span className="heading-count">{data[kind].length}</span>
+            <span className="heading-count">{scopedRecords.length}</span>
           </h1>
         </div>
-        <Link className="button primary" href={`/${config.section}/neu`}>
+        <Link className="button primary" href={createHref}>
           <Icon name="plus" size={18} />
           {config.singular} anlegen
         </Link>
@@ -214,30 +263,58 @@ export function EntityList({ kind }: { kind: EntityKind }) {
       )}
       <section className="table-panel" aria-label={`${config.plural}übersicht`}>
         <div className="table-toolbar">
-          <div className="list-tabs">
-            <Link
-              href={`/${config.section}`}
-              className={!unassigned ? "selected" : ""}
-            >
-              Alle {config.plural}
-              <span>{data[kind].length}</span>
-            </Link>
-            {kind !== "employees" && (
-              <Link
-                href={`/${config.section}?filter=unassigned`}
-                className={unassigned ? "selected" : ""}
+          {kind === "units" ? (
+            <label className="field">
+              <span>Gebäude</span>
+              <select
+                value={building}
+                onChange={(event) => {
+                  const selected = event.target.value;
+                  router.push(
+                    selected
+                      ? `${listHref}?gebaeude=${encodeURIComponent(selected)}`
+                      : listHref,
+                  );
+                }}
               >
-                Ohne Zuordnung
-                <span>
-                  {
-                    data[kind].filter((record) =>
-                      withoutAssignment(kind, record, data),
-                    ).length
-                  }
-                </span>
+                <option value="">Alle Gebäude</option>
+                {building &&
+                  !data.properties.some(
+                    (property) => property.id === building,
+                  ) && <option value={building}>Gebäude nicht gefunden</option>}
+                {data.properties.map((property) => (
+                  <option key={property.id} value={property.id}>
+                    {property.name} – {property.street}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <div className="list-tabs">
+              <Link
+                href={`/${config.section}`}
+                className={!unassigned ? "selected" : ""}
+              >
+                Alle {config.plural}
+                <span>{data[kind].length}</span>
               </Link>
-            )}
-          </div>
+              {canFilterUnassigned && (
+                <Link
+                  href={`/${config.section}?filter=unassigned`}
+                  className={unassigned ? "selected" : ""}
+                >
+                  Ohne Zuordnung
+                  <span>
+                    {
+                      data[kind].filter((record) =>
+                        withoutAssignment(kind, record, data),
+                      ).length
+                    }
+                  </span>
+                </Link>
+              )}
+            </div>
+          )}
           <label className="search-field">
             <Icon name="search" size={18} />
             <input
@@ -253,20 +330,30 @@ export function EntityList({ kind }: { kind: EntityKind }) {
           <table>
             <thead>
               <tr>
-                <th>{kind === "properties" ? "Objekt" : "Name"}</th>
+                <th>
+                  {kind === "properties"
+                    ? "Objekt"
+                    : kind === "units"
+                      ? "Bezeichnung"
+                      : "Name"}
+                </th>
                 <th>
                   {kind === "properties"
                     ? "Adresse"
-                    : kind === "employees"
-                      ? "E-Mail-Adresse"
-                      : "Kontakt"}
+                    : kind === "units"
+                      ? "Gebäude"
+                      : kind === "employees"
+                        ? "E-Mail-Adresse"
+                        : "Kontakt"}
                 </th>
                 <th>
                   {kind === "properties"
                     ? "Eigentümer"
-                    : kind === "employees"
-                      ? "Rolle"
-                      : "Objekt / Zuordnung"}
+                    : kind === "units"
+                      ? "Mieter"
+                      : kind === "employees"
+                        ? "Rolle"
+                        : "Objekt / Zuordnung"}
                 </th>
                 {kind === "properties" && <th>Einheiten</th>}
                 {(kind === "owners" || kind === "tenants") && <th>Zugang</th>}
@@ -349,7 +436,7 @@ export function EntityList({ kind }: { kind: EntityKind }) {
                         )}
                       <Link
                         className="edit-link"
-                        href={`/${config.section}/${record.id}/bearbeiten`}
+                        href={`/${config.section}/${record.id}/bearbeiten${buildingQuery}`}
                         aria-label={`${record.name} bearbeiten`}
                       >
                         <Icon name="edit" size={15} />
@@ -396,9 +483,7 @@ export function EntityList({ kind }: { kind: EntityKind }) {
             ) : (
               <Link
                 className="button"
-                href={
-                  unassigned ? `/${config.section}` : `/${config.section}/neu`
-                }
+                href={unassigned ? listHref : createHref}
               >
                 {unassigned ? "Alle anzeigen" : `${config.singular} anlegen`}
               </Link>
@@ -407,7 +492,7 @@ export function EntityList({ kind }: { kind: EntityKind }) {
         )}
         <div className="table-footer">
           <span>
-            {rows.length} von {data[kind].length} {config.plural}
+            {rows.length} von {scopedRecords.length} {config.plural}
             {rows.length === 1 && kind === "properties" ? "n" : ""}
           </span>
         </div>
@@ -430,7 +515,9 @@ export function EntityList({ kind }: { kind: EntityKind }) {
             {kind === "owners" &&
               " Die zugehörigen Objekte bleiben erhalten und verlieren ihre Eigentümerzuordnung."}
             {kind === "properties" &&
-              " Die zugehörigen Mieter bleiben erhalten und verlieren ihre Objekt- und Wohnungszuordnung."}
+              " Die Einheiten des Gebäudes werden ebenfalls gelöscht. Die Mieter bleiben erhalten und verlieren ihre Gebäude- und Wohnungszuordnung."}
+            {kind === "units" &&
+              " Zugeordnete Mieter bleiben erhalten und verlieren ihre Wohnungszuordnung."}
           </p>
           {deleteError && (
             <p role="alert" className="form-error">

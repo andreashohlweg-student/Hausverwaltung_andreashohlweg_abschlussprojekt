@@ -11,7 +11,10 @@ if (!process.env.NEON_BRANCH?.startsWith("hausportal-check-"))
     "E2E-Tests dürfen nur auf einem isolierten hausportal-check-Branch laufen.",
   );
 const base = process.env.E2E_BASE_URL || "http://localhost:3002";
-const mailRecipient = process.env.E2E_MAIL_TO;
+const testMail = !process.argv.includes("--skip-mail");
+const mailRecipient = testMail
+  ? process.env.E2E_MAIL_TO
+  : "e2e-record@example.com";
 if (!mailRecipient || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mailRecipient))
   throw new Error(
     "E2E_MAIL_TO muss eine ausdrücklich gewählte Testempfängeradresse enthalten. Der Test sendet eine Einladung dorthin.",
@@ -98,6 +101,8 @@ const ids = {
   property: `e2e-property-${run}`,
   otherProperty: `e2e-other-property-${run}`,
   tenant: `e2e-tenant-${run}`,
+  unit: `e2e-unit-${run}`,
+  otherUnit: `e2e-other-unit-${run}`,
 };
 try {
   // Remove only this suite's previous mail fixture on its isolated branch.
@@ -136,7 +141,7 @@ try {
     ],
   );
   await client.query(
-    "INSERT INTO hausportal.properties(id,name,street,postal_code,city,units,owner_id) VALUES($1,$2,'Teststraße 1','10115','Berlin',8,$3),($4,$5,'Andere Straße 2','10115','Berlin',4,$6)",
+    "INSERT INTO hausportal.properties(id,name,street,postal_code,city,owner_id) VALUES($1,$2,'Teststraße 1','10115','Berlin',$3),($4,$5,'Andere Straße 2','10115','Berlin',$6)",
     [
       ids.property,
       `Eigenes Haus ${run}`,
@@ -147,8 +152,12 @@ try {
     ],
   );
   await client.query(
-    "INSERT INTO hausportal.tenants(id,name,email,property_id,apartment) VALUES($1,'E2E Mieter',$2,$3,'EG links')",
-    [ids.tenant, addresses.tenant, ids.property],
+    "INSERT INTO hausportal.units(id,name,property_id) VALUES($1,'EG links',$2),($3,'Fremde Einheit',$4)",
+    [ids.unit, ids.property, ids.otherUnit, ids.otherProperty],
+  );
+  await client.query(
+    "INSERT INTO hausportal.tenants(id,name,email,unit_id) VALUES($1,'E2E Mieter',$2,$3)",
+    [ids.tenant, addresses.tenant, ids.unit],
   );
   const tokens = {
     admin: await invitation(addresses.admin, "E2E Administrator", "admin"),
@@ -291,12 +300,53 @@ try {
     assert.equal(portal.status, 200);
     assert.ok(portal.text.includes(`Eigenes Haus ${run}`));
     assert.ok(!portal.text.includes(`Fremdes Haus ${run}`));
+    assert.ok(portal.text.includes("EG links"));
+    assert.ok(!portal.text.includes("Fremde Einheit"));
+    assert.ok(
+      (await sessions[role].request("/einheiten")).location?.includes(
+        "/portal",
+      ),
+    );
     const adminPage = await sessions[role].request("/dashboard");
     assert.ok(adminPage.location?.includes("/portal"));
     pass(`Berechtigungen und Datentrennung für ${role}`);
   }
   const snapshot = await sessions.admin.request("/api/data");
   assert.equal(snapshot.status, 200);
+  assert.equal(
+    (await sessions.admin.request(`/einheiten?gebaeude=${ids.property}`))
+      .status,
+    200,
+  );
+  const editTenant = await sessions.admin.request(
+    `/mieter/${ids.tenant}/bearbeiten`,
+  );
+  assert.equal(editTenant.status, 200);
+  const unitSelect = editTenant.text.match(
+    /<select[^>]*name="unitId"[^>]*>(.*?)<\/select>/s,
+  )?.[1];
+  assert.ok(unitSelect?.includes(`value="${ids.unit}"`));
+  assert.ok(!unitSelect.includes(`value="${ids.otherUnit}"`));
+  const newUnit = {
+    id: `e2e-new-unit-${run}`,
+    name: "DG rechts",
+    propertyId: ids.property,
+  };
+  snapshot.json.data.units.push(newUnit);
+  const tenant = snapshot.json.data.tenants.find(
+    (record) => record.id === ids.tenant,
+  );
+  tenant.unitId = ids.otherUnit;
+  assert.equal(
+    (
+      await sessions.admin.request("/api/data", {
+        method: "PUT",
+        body: { data: snapshot.json.data, revision: snapshot.json.revision },
+      })
+    ).status,
+    400,
+  );
+  tenant.unitId = newUnit.id;
   snapshot.json.data.owners.push({
     id: `e2e-mail-${run}`,
     name: "E2E Mailversand",
@@ -314,6 +364,19 @@ try {
     ),
     true,
   );
+  const updated = (await sessions.admin.request("/api/data")).json;
+  assert.deepEqual(
+    updated.data.units.find((unit) => unit.id === newUnit.id),
+    newUnit,
+  );
+  assert.equal(
+    updated.data.tenants.find((record) => record.id === ids.tenant).unitId,
+    newUnit.id,
+  );
+  assert.ok(
+    (await sessions.tenant.request("/portal")).text.includes("DG rechts"),
+  );
+  pass("Einheit gespeichert und zugeordnet, gebäudefremde Zuordnung abgelehnt");
   pass(
     "Admin-Datensatz wird per API in Postgres gespeichert und erneut gelesen",
   );
@@ -327,6 +390,19 @@ try {
     409,
   );
   pass("Veraltete Datenstände überschreiben keine neueren Änderungen");
+  updated.data.units = updated.data.units.filter(
+    (unit) => unit.id !== newUnit.id,
+  );
+  updated.data.tenants.find((record) => record.id === ids.tenant).unitId = "";
+  const removed = await sessions.admin.request("/api/data", {
+    method: "PUT",
+    body: { data: updated.data, revision: updated.revision },
+  });
+  assert.equal(removed.status, 200);
+  const tenantWithoutUnit = await sessions.tenant.request("/portal");
+  assert.ok(tenantWithoutUnit.text.includes(`Eigenes Haus ${run}`));
+  assert.ok(tenantWithoutUnit.text.includes("Keine Wohnung zugeordnet."));
+  pass("Einheit gelöscht, Mieter und Gebäudezuordnung erhalten");
   await sessions.owner.request("/api/auth/sign-out", {
     method: "POST",
     body: {},
@@ -354,25 +430,27 @@ try {
     200,
   );
   pass("Passwort-Rücksetzung ist ohne Anmeldung erreichbar");
-  const native = await fetch(process.env.NEON_FUNCTION_HELLO_BASE_URL);
-  assert.equal(native.status, 401);
-  pass("Neon Function verweigert unautorisierte Direktaufrufe");
-  const service = await sessions.admin.request("/api/services");
-  assert.equal(service.status, 200, service.json?.error);
-  assert.equal(service.json.ok, true);
-  pass("App → Neon Function → Postgres antwortet erfolgreich");
-  const sent = await sessions.admin.request("/api/invitations", {
-    method: "POST",
-    body: { kind: "owners", contactId: `e2e-mail-${run}` },
-  });
-  assert.equal(sent.status, 200, sent.json?.error);
-  const invitationRow = await client.query(
-    "SELECT delivery_status,role FROM hausportal.invitations WHERE owner_id=$1 AND revoked_at IS NULL",
-    [`e2e-mail-${run}`],
-  );
-  assert.equal(invitationRow.rows[0].delivery_status, "sent");
-  assert.equal(invitationRow.rows[0].role, "owner");
-  pass("Admin → Einladung → Neon Function → SMTP-Versand erfolgreich");
+  if (testMail) {
+    const native = await fetch(process.env.NEON_FUNCTION_HELLO_BASE_URL);
+    assert.equal(native.status, 401);
+    pass("Neon Function verweigert unautorisierte Direktaufrufe");
+    const service = await sessions.admin.request("/api/services");
+    assert.equal(service.status, 200, service.json?.error);
+    assert.equal(service.json.ok, true);
+    pass("App → Neon Function → Postgres antwortet erfolgreich");
+    const sent = await sessions.admin.request("/api/invitations", {
+      method: "POST",
+      body: { kind: "owners", contactId: `e2e-mail-${run}` },
+    });
+    assert.equal(sent.status, 200, sent.json?.error);
+    const invitationRow = await client.query(
+      "SELECT delivery_status,role FROM hausportal.invitations WHERE owner_id=$1 AND revoked_at IS NULL",
+      [`e2e-mail-${run}`],
+    );
+    assert.equal(invitationRow.rows[0].delivery_status, "sent");
+    assert.equal(invitationRow.rows[0].role, "owner");
+    pass("Admin → Einladung → Neon Function → SMTP-Versand erfolgreich");
+  }
   console.log(
     `E2E erfolgreich: ${passed} Prüfungen bestanden. Ausschließlich isolierter Testbranch verwendet.`,
   );

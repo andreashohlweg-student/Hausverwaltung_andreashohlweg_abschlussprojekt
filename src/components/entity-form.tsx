@@ -10,12 +10,21 @@ import {
   type Records,
   type Property,
   type Tenant,
+  type Unit,
   type Employee,
 } from "@/lib/domain";
 import { useData } from "./data-provider";
 import { Icon } from "./icon";
 
-export function EntityForm({ kind, id }: { kind: EntityKind; id?: string }) {
+export function EntityForm({
+  kind,
+  id,
+  building,
+}: {
+  kind: EntityKind;
+  id?: string;
+  building?: string;
+}) {
   const { data, ready } = useData();
   if (!ready)
     return (
@@ -34,15 +43,17 @@ export function EntityForm({ kind, id }: { kind: EntityKind; id?: string }) {
         </Link>
       </div>
     );
-  return <LoadedForm kind={kind} record={record} />;
+  return <LoadedForm kind={kind} record={record} building={building} />;
 }
 
 function LoadedForm({
   kind,
   record,
+  building,
 }: {
   kind: EntityKind;
   record?: Records[EntityKind];
+  building?: string;
 }) {
   const { data, save, invite } = useData();
   const config = entities[kind];
@@ -54,12 +65,23 @@ function LoadedForm({
   const [propertyId, setPropertyId] = useState(
     kind === "tenants" && record ? (record as Tenant).propertyId : "",
   );
-  const [apartment, setApartment] = useState(
-    kind === "tenants" && record ? (record as Tenant).apartment : "",
+  const [unitId, setUnitId] = useState(
+    kind === "tenants" && record ? (record as Tenant).unitId : "",
   );
+  const unitOptions = data.units
+    .filter((unit) => unit.propertyId === propertyId)
+    .sort((a, b) => a.name.localeCompare(b.name, "de", { numeric: true }));
+  const unit = kind === "units" ? (record as Unit | undefined) : undefined;
+  const unitAssigned =
+    !!unit && data.tenants.some((tenant) => tenant.unitId === unit.id);
+  const buildingFilter =
+    kind === "units" && data.properties.some((item) => item.id === building)
+      ? building
+      : undefined;
   const property =
     kind === "properties" ? (record as Property | undefined) : undefined;
-  const listHref = `/${config.section}`;
+  const listHref = `/${config.section}${buildingFilter ? `?gebaeude=${encodeURIComponent(buildingFilter)}` : ""}`;
+  const hasContact = kind !== "properties" && kind !== "units";
   const title = `${config.singular} ${record ? "bearbeiten" : "anlegen"}`;
   const ownerOptions =
     kind === "properties"
@@ -93,15 +115,10 @@ function LoadedForm({
     const id = record?.id ?? crypto.randomUUID();
     let entry: Records[EntityKind];
     if (kind === "properties") {
-      const units = Number(text("units"));
       if (![text("street"), text("postalCode"), text("city")].every(Boolean))
         return setError("Bitte fülle die vollständige Adresse aus.");
       if (!/^\d{5}$/.test(text("postalCode")))
         return setError("Bitte gib eine fünfstellige Postleitzahl ein.");
-      if (!Number.isSafeInteger(units) || units < 1)
-        return setError(
-          "Die Anzahl der Wohneinheiten muss eine positive ganze Zahl sein.",
-        );
       const ownerId = text("ownerId");
       if (ownerId && !data.owners.some((owner) => owner.id === ownerId))
         return setError(
@@ -113,9 +130,22 @@ function LoadedForm({
         street: text("street"),
         postalCode: text("postalCode"),
         city: text("city"),
-        units,
         ownerId,
       };
+    } else if (kind === "units") {
+      const buildingId = unitAssigned ? unit.propertyId : text("propertyId");
+      if (!data.properties.some((property) => property.id === buildingId))
+        return setError("Bitte wähle ein Gebäude aus.");
+      if (
+        data.units.some(
+          (item) =>
+            item.id !== id &&
+            item.propertyId === buildingId &&
+            item.name.toLowerCase() === name.toLowerCase(),
+        )
+      )
+        return setError("Diese Bezeichnung gibt es in dem Gebäude bereits.");
+      entry = { id, name, propertyId: buildingId };
     } else {
       const email = text("email").toLowerCase();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
@@ -141,13 +171,15 @@ function LoadedForm({
           return setError(
             "Dieses Objekt existiert nicht mehr. Bitte wähle erneut.",
           );
+        if (unitId && !unitOptions.some((unit) => unit.id === unitId))
+          return setError("Diese Einheit ist in dem Gebäude nicht verfügbar.");
         entry = {
           id,
           name,
           email,
           phone: text("phone"),
           propertyId,
-          apartment: propertyId ? apartment.trim() : "",
+          unitId,
         };
       } else entry = { id, name, email, phone: text("phone") };
     }
@@ -169,7 +201,9 @@ function LoadedForm({
     if (!record && (kind === "owners" || kind === "tenants"))
       await invite(kind, entry.id);
     startTransition(() =>
-      router.push(`${listHref}?saved=${record ? "updated" : "created"}`),
+      router.push(
+        `${listHref}${buildingFilter ? "&" : "?"}saved=${record ? "updated" : "created"}`,
+      ),
     );
   }
 
@@ -192,7 +226,11 @@ function LoadedForm({
             </span>
             <div>
               <h2>
-                {kind === "properties" ? "Objektdaten" : "Persönliche Angaben"}
+                {kind === "properties"
+                  ? "Objektdaten"
+                  : kind === "units"
+                    ? "Einheitsdaten"
+                    : "Persönliche Angaben"}
               </h2>
               <p>Mit * markierte Felder sind Pflichtfelder.</p>
             </div>
@@ -209,7 +247,11 @@ function LoadedForm({
                 className={kind === "properties" ? "field full-width" : "field"}
               >
                 <span>
-                  {kind === "properties" ? "Objektname" : "Vollständiger Name"}{" "}
+                  {kind === "properties"
+                    ? "Objektname"
+                    : kind === "units"
+                      ? "Bezeichnung"
+                      : "Vollständiger Name"}{" "}
                   <span className="required">*</span>
                 </span>
                 <input
@@ -220,12 +262,43 @@ function LoadedForm({
                   placeholder={
                     kind === "properties"
                       ? "z. B. Haus am Park"
-                      : "Vor- und Nachname"
+                      : kind === "units"
+                        ? "z. B. 1. OG links"
+                        : "Vor- und Nachname"
                   }
-                  autoComplete={kind === "properties" ? "off" : "name"}
+                  autoComplete={hasContact ? "name" : "off"}
                 />
               </label>
-              {kind !== "properties" && (
+              {kind === "units" && (
+                <label className="field">
+                  <span>
+                    Gebäude <span className="required">*</span>
+                  </span>
+                  <select
+                    name="propertyId"
+                    required
+                    disabled={unitAssigned}
+                    defaultValue={unit?.propertyId ?? buildingFilter ?? ""}
+                  >
+                    <option value="">Gebäude auswählen</option>
+                    {data.properties.map((property) => (
+                      <option key={property.id} value={property.id}>
+                        {property.name} – {property.street}
+                      </option>
+                    ))}
+                  </select>
+                  {unitAssigned && (
+                    <small>
+                      Entferne zuerst die Mieterzuordnung, um das Gebäude zu
+                      ändern.
+                    </small>
+                  )}
+                  {data.properties.length === 0 && (
+                    <Link href="/objekte/neu">Objekt anlegen</Link>
+                  )}
+                </label>
+              )}
+              {hasContact && (
                 <label className="field">
                   <span>
                     E-Mail-Adresse <span className="required">*</span>
@@ -328,20 +401,6 @@ function LoadedForm({
                   </label>
                   <label className="field">
                     <span>
-                      Anzahl Wohneinheiten <span className="required">*</span>
-                    </span>
-                    <input
-                      name="units"
-                      type="number"
-                      min={1}
-                      max={100000}
-                      step={1}
-                      required
-                      defaultValue={property?.units ?? 1}
-                    />
-                  </label>
-                  <label className="field">
-                    <span>
                       Eigentümer <span className="optional">optional</span>
                     </span>
                     <select
@@ -364,42 +423,49 @@ function LoadedForm({
               <>
                 <div className="form-divider">
                   <h3>Wohnung zuordnen</h3>
-                  <p>Die Zuordnung kannst du auch später ergänzen.</p>
                 </div>
                 <div className="form-grid">
                   <label className="field">
                     <span>
-                      Objekt <span className="optional">optional</span>
+                      Gebäude <span className="optional">optional</span>
                     </span>
                     <select
                       name="propertyId"
                       value={propertyId}
                       onChange={(event) => {
                         setPropertyId(event.target.value);
-                        setApartment("");
+                        setUnitId("");
                       }}
                     >
                       <option value="">Später zuordnen</option>
                       {data.properties.map((property) => (
                         <option key={property.id} value={property.id}>
-                          {property.name}
+                          {property.name} – {property.street}
                         </option>
                       ))}
                     </select>
                   </label>
                   <label className="field">
                     <span>
-                      Wohnungsbezeichnung{" "}
-                      <span className="optional">optional</span>
+                      Einheit <span className="optional">optional</span>
                     </span>
-                    <input
-                      name="apartment"
-                      value={apartment}
-                      disabled={!propertyId}
-                      onChange={(event) => setApartment(event.target.value)}
-                      maxLength={100}
-                      placeholder="z. B. 1. OG links"
-                    />
+                    <select
+                      name="unitId"
+                      value={unitId}
+                      disabled={unitOptions.length === 0}
+                      onChange={(event) => setUnitId(event.target.value)}
+                    >
+                      <option value="">
+                        {propertyId && unitOptions.length === 0
+                          ? "Keine Einheiten vorhanden"
+                          : "Später zuordnen"}
+                      </option>
+                      {unitOptions.map((unit) => (
+                        <option key={unit.id} value={unit.id}>
+                          {unit.name}
+                        </option>
+                      ))}
+                    </select>
                   </label>
                 </div>
               </>

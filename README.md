@@ -4,10 +4,10 @@ Hausverwaltung mit Next.js App Router, TypeScript, Neon Postgres, Neon Auth und 
 
 ## Anmeldung und Einladungen
 
-- Administratoren verwalten Eigentümer, Mieter, Objekte und Mitarbeiter.
+- Administratoren verwalten Eigentümer, Mieter, Objekte, Einheiten und Mitarbeiter.
 - Beim Anlegen eines Eigentümers oder Mieters werden zunächst der Kontakt und eine Einladung gespeichert. Der Empfänger erhält einen Link und setzt sein Passwort selbst. Erst dann entstehen die Neon-Auth-Identität und der Benutzer mit der zugehörigen Rolle.
 - Einladungslinks gelten sieben Tage, sind einmal verwendbar und werden nur als SHA-256-Hash gespeichert. Erneutes Einladen widerruft den vorherigen Link.
-- Eigentümer sehen im Portal ausschließlich ihre Objekte. Mieter sehen ihr zugeordnetes Objekt und ihre Wohnungsbezeichnung. Die API prüft Rollen unabhängig von der Navigation.
+- Eigentümer sehen im Portal ausschließlich ihre Gebäude mit den zugehörigen Einheiten. Mieter sehen ihr zugeordnetes Gebäude und ihre eigene Einheit. Die API prüft Rollen unabhängig von der Navigation.
 - Mitarbeiterrollen sind beschreibende Verwaltungsdaten; Mitarbeiter erhalten in diesem Schritt keinen eigenen Login.
 - Ein fehlgeschlagener Mailversand wird angezeigt. Der Kontakt bleibt gespeichert; die Einladung lässt sich aus der Liste erneut senden.
 - Abmelden und Passwort-Rücksetzung sind vorhanden. Passwort-Rücksetzungen laufen über den Maildienst von Neon Auth, Einladungen über Gmail-SMTP.
@@ -130,8 +130,10 @@ Der Integrationstest verwendet echte isolierte Neon-Services und zufällig erzeu
 node --env-file=/ABSOLUTER/PFAD/test.env scripts/test-e2e.mjs
 ```
 
-Geprüft werden Registrierung aller drei Rollen, Sessions, wiederholte Anmeldung, Rechte und Datentrennung, abgelaufene/verwendete Links, Datenbankspeicherung, Revisionskonflikte sowie App → Function → Datenbank und SMTP-Versand. Für den Versandtest muss `E2E_MAIL_TO` ausdrücklich auf ein eigenes Testpostfach gesetzt werden; der Test versendet eine echte Einladung dorthin. Ohne diese Variable verweigert er den Start. Den isolierten Testbranch nach Abschluss löschen.
+Geprüft werden Registrierung aller drei Rollen, Sessions, wiederholte Anmeldung, Rechte und Datentrennung, abgelaufene/verwendete Links, Datenbankspeicherung, Revisionskonflikte sowie App → Function → Datenbank und SMTP-Versand. Für den Versandtest muss `E2E_MAIL_TO` ausdrücklich auf ein eigenes Testpostfach gesetzt werden; der Test versendet eine echte Einladung dorthin. Mit `--skip-mail` läuft der Test ohne Function-Aufrufe und ohne Mailversand. Den isolierten Testbranch nach Abschluss löschen.
 
-## Weitere fachliche Schritte
+## Gebäude und Einheiten
 
-Wohnungen sind noch keine eigenständigen Datensätze: Die Anzahl der Einheiten ist eine Objektangabe, die Wohnungsbezeichnung beim Mieter Freitext. Belegungskontrolle, mehrere Eigentümer pro Objekt, Verträge, Abrechnung und Dokumente folgen in eigenen Schritten. Das hier ist ein Einladungs-/Registrierungsablauf; kostenpflichtige Abonnements oder Zahlungsabwicklung sind nicht enthalten.
+In der Objektliste führt die Anzahl in der Spalte „Einheiten“ zur Liste des Gebäudes. Dort lassen sich Einheiten einzeln anlegen und bearbeiten. Beim Mieter wird zuerst das Gebäude und dann eine seiner Einheiten gewählt. Mehrere Mieter können derselben Einheit zugeordnet sein.
+
+Die Migration übernimmt vorhandene Wohnungsbezeichnungen je Gebäude. Die angezeigte Anzahl ergibt sich aus den erfassten Einheiten. Frühere Mengenangaben bleiben in der Datenbank erhalten.

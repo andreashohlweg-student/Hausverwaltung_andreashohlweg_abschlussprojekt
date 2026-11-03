@@ -2,7 +2,7 @@ import type { Database } from "./domain";
 
 /** Fictional demo records. Never use real personal data in this prototype. */
 export const mockData: Database = {
-  version: 1,
+  version: 2,
   owners: [
     {
       id: "owner-1",
@@ -36,7 +36,6 @@ export const mockData: Database = {
       street: "Parkstraße 12",
       postalCode: "10405",
       city: "Berlin",
-      units: 8,
       ownerId: "owner-1",
     },
     {
@@ -45,7 +44,6 @@ export const mockData: Database = {
       street: "Lindenallee 24",
       postalCode: "10437",
       city: "Berlin",
-      units: 12,
       ownerId: "owner-2",
     },
     {
@@ -54,7 +52,6 @@ export const mockData: Database = {
       street: "Kantstraße 8",
       postalCode: "10623",
       city: "Berlin",
-      units: 4,
       ownerId: "owner-3",
     },
     {
@@ -63,9 +60,14 @@ export const mockData: Database = {
       street: "Gartenstraße 36",
       postalCode: "10115",
       city: "Berlin",
-      units: 6,
       ownerId: "owner-1",
     },
+  ],
+  units: [
+    { id: "unit-1", name: "1. OG links", propertyId: "property-1" },
+    { id: "unit-2", name: "2. OG rechts", propertyId: "property-1" },
+    { id: "unit-3", name: "EG links", propertyId: "property-2" },
+    { id: "unit-4", name: "1. OG", propertyId: "property-3" },
   ],
   tenants: [
     {
@@ -74,7 +76,7 @@ export const mockData: Database = {
       email: "anna.schneider@example.com",
       phone: "030 555 0201",
       propertyId: "property-1",
-      apartment: "1. OG links",
+      unitId: "unit-1",
     },
     {
       id: "tenant-2",
@@ -82,7 +84,7 @@ export const mockData: Database = {
       email: "jonas.fischer@example.com",
       phone: "030 555 0202",
       propertyId: "property-1",
-      apartment: "2. OG rechts",
+      unitId: "unit-2",
     },
     {
       id: "tenant-3",
@@ -90,7 +92,7 @@ export const mockData: Database = {
       email: "lea.wagner@example.com",
       phone: "030 555 0203",
       propertyId: "property-2",
-      apartment: "EG links",
+      unitId: "unit-3",
     },
     {
       id: "tenant-4",
@@ -98,7 +100,7 @@ export const mockData: Database = {
       email: "paul.neumann@example.com",
       phone: "030 555 0204",
       propertyId: "property-3",
-      apartment: "1. OG",
+      unitId: "unit-4",
     },
     {
       id: "tenant-5",
@@ -106,7 +108,7 @@ export const mockData: Database = {
       email: "marie.schulz@example.com",
       phone: "030 555 0205",
       propertyId: "",
-      apartment: "",
+      unitId: "",
     },
   ],
   employees: [

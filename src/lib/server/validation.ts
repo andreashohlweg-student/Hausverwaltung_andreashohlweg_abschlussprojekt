@@ -9,7 +9,7 @@ const email = z
 const phone = z.string().trim().max(40);
 const database = z
   .object({
-    version: z.literal(1),
+    version: z.literal(2),
     owners: z.array(z.object({ id, name, email, phone })).max(10000),
     tenants: z
       .array(
@@ -19,7 +19,7 @@ const database = z
           email,
           phone,
           propertyId: z.string().max(100),
-          apartment: z.string().trim().max(100),
+          unitId: z.string().max(100),
         }),
       )
       .max(10000),
@@ -31,11 +31,11 @@ const database = z
           street: z.string().trim().min(1).max(160),
           postalCode: z.string().regex(/^\d{5}$/),
           city: z.string().trim().min(1).max(100),
-          units: z.number().int().min(1).max(100000),
           ownerId: z.string().max(100),
         }),
       )
       .max(10000),
+    units: z.array(z.object({ id, name, propertyId: id })).max(10000),
     employees: z
       .array(
         z.object({

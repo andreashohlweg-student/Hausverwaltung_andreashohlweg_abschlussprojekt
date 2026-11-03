@@ -1,5 +1,7 @@
-export type EntityKind = "owners" | "tenants" | "properties" | "employees";
-export type Section = "eigentuemer" | "mieter" | "objekte" | "mitarbeiter";
+export type EntityKind =
+  "owners" | "tenants" | "properties" | "units" | "employees";
+export type Section =
+  "eigentuemer" | "mieter" | "objekte" | "einheiten" | "mitarbeiter";
 
 interface BaseRecord {
   id: string;
@@ -13,14 +15,16 @@ export interface Tenant extends BaseRecord {
   email: string;
   phone: string;
   propertyId: string;
-  apartment: string;
+  unitId: string;
 }
 export interface Property extends BaseRecord {
   street: string;
   postalCode: string;
   city: string;
-  units: number;
   ownerId: string;
+}
+export interface Unit extends BaseRecord {
+  propertyId: string;
 }
 export interface Employee extends BaseRecord {
   email: string;
@@ -30,13 +34,15 @@ export interface Records {
   owners: Owner;
   tenants: Tenant;
   properties: Property;
+  units: Unit;
   employees: Employee;
 }
 export interface Database {
-  version: 1;
+  version: 2;
   owners: Owner[];
   tenants: Tenant[];
   properties: Property[];
+  units: Unit[];
   employees: Employee[];
 }
 
@@ -59,6 +65,11 @@ export const entities = {
     plural: "Objekte",
     description: "Deine verwalteten Immobilien an einem Ort.",
   },
+  units: {
+    section: "einheiten",
+    singular: "Einheit",
+    plural: "Einheiten",
+  },
   employees: {
     section: "mitarbeiter",
     singular: "Mitarbeiter",
@@ -80,10 +91,7 @@ export function withoutAssignment(
 ): boolean {
   if (kind === "owners")
     return !data.properties.some((property) => property.ownerId === record.id);
-  if (kind === "tenants")
-    return (
-      !(record as Tenant).propertyId || !(record as Tenant).apartment.trim()
-    );
+  if (kind === "tenants") return !(record as Tenant).unitId;
   if (kind === "properties") return !(record as Property).ownerId;
   return false;
 }
@@ -102,11 +110,17 @@ export function removeRecord(
     next.properties = data.properties.map((property) =>
       property.ownerId === id ? { ...property, ownerId: "" } : property,
     );
-  if (kind === "properties")
+  if (kind === "properties") {
+    next.units = data.units.filter((unit) => unit.propertyId !== id);
     next.tenants = data.tenants.map((tenant) =>
       tenant.propertyId === id
-        ? { ...tenant, propertyId: "", apartment: "" }
+        ? { ...tenant, propertyId: "", unitId: "" }
         : tenant,
+    );
+  }
+  if (kind === "units")
+    next.tenants = data.tenants.map((tenant) =>
+      tenant.unitId === id ? { ...tenant, unitId: "" } : tenant,
     );
   return next;
 }
@@ -115,11 +129,12 @@ export function removeRecord(
 export function isDatabase(value: unknown): value is Database {
   if (!value || typeof value !== "object") return false;
   const db = value as Record<string, unknown>;
-  if (db.version !== 1) return false;
+  if (db.version !== 2) return false;
   const stringFields: Record<EntityKind, string[]> = {
     owners: ["id", "name", "email", "phone"],
-    tenants: ["id", "name", "email", "phone", "propertyId", "apartment"],
+    tenants: ["id", "name", "email", "phone", "propertyId", "unitId"],
     properties: ["id", "name", "street", "postalCode", "city", "ownerId"],
+    units: ["id", "name", "propertyId"],
     employees: ["id", "name", "email", "role"],
   };
   for (const kind of Object.keys(entities) as EntityKind[]) {
@@ -139,20 +154,28 @@ export function isDatabase(value: unknown): value is Database {
     if (new Set(rows.map((row) => row.id)).size !== rows.length) return false;
   }
   const checked = value as Database;
+  const propertiesById = new Map(
+    checked.properties.map((property) => [property.id, property]),
+  );
+  const unitsById = new Map(checked.units.map((unit) => [unit.id, unit]));
+  const unitNames = new Set(
+    checked.units.map((unit) =>
+      JSON.stringify([unit.propertyId, unit.name.trim().toLowerCase()]),
+    ),
+  );
   return (
+    unitNames.size === checked.units.length &&
+    checked.units.every((unit) => propertiesById.has(unit.propertyId)) &&
     checked.properties.every(
       (property) =>
-        Number.isSafeInteger(property.units) &&
-        property.units > 0 &&
-        (!property.ownerId ||
-          checked.owners.some((owner) => owner.id === property.ownerId)),
+        !property.ownerId ||
+        checked.owners.some((owner) => owner.id === property.ownerId),
     ) &&
     checked.tenants.every(
       (tenant) =>
-        !tenant.propertyId ||
-        checked.properties.some(
-          (property) => property.id === tenant.propertyId,
-        ),
+        (!tenant.propertyId || propertiesById.has(tenant.propertyId)) &&
+        (!tenant.unitId ||
+          unitsById.get(tenant.unitId)?.propertyId === tenant.propertyId),
     ) &&
     checked.employees.every((employee) =>
       ["Verwaltung", "Buchhaltung", "Technik", "Administrator"].includes(

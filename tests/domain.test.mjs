@@ -9,7 +9,7 @@ import {
 
 function fixture() {
   return {
-    version: 1,
+    version: 2,
     owners: [
       { id: "o1", name: "Eigentümer", email: "owner@example.com", phone: "" },
     ],
@@ -20,10 +20,10 @@ function fixture() {
         street: "Straße 1",
         postalCode: "10115",
         city: "Berlin",
-        units: 2,
         ownerId: "o1",
       },
     ],
+    units: [{ id: "u1", name: "EG", propertyId: "p1" }],
     tenants: [
       {
         id: "t1",
@@ -31,7 +31,7 @@ function fixture() {
         email: "tenant@example.com",
         phone: "",
         propertyId: "p1",
-        apartment: "EG",
+        unitId: "u1",
       },
     ],
     employees: [],
@@ -53,13 +53,24 @@ test("deleting a property preserves people and clears the apartment assignment",
   const original = fixture();
   const next = removeRecord(original, "properties", "p1");
   assert.equal(next.properties.length, 0);
+  assert.equal(next.units.length, 0);
   assert.equal(next.owners.length, 1);
   assert.equal(next.tenants.length, 1);
   assert.equal(next.tenants[0].propertyId, "");
-  assert.equal(next.tenants[0].apartment, "");
-  assert.equal(original.tenants[0].apartment, "EG");
+  assert.equal(next.tenants[0].unitId, "");
+  assert.equal(original.tenants[0].unitId, "u1");
   assert.ok(withoutAssignment("owners", next.owners[0], next));
   assert.ok(withoutAssignment("tenants", next.tenants[0], next));
+  assert.ok(isDatabase(next));
+});
+
+test("deleting a unit keeps its building and the tenant's building assignment", () => {
+  const db = fixture();
+  const next = removeRecord(db, "units", "u1");
+  assert.equal(next.units.length, 0);
+  assert.deepEqual(next.properties, db.properties);
+  assert.equal(next.tenants[0].unitId, "");
+  assert.equal(next.tenants[0].propertyId, "p1");
   assert.ok(isDatabase(next));
 });
 
@@ -73,7 +84,7 @@ test("deleting contacts leaves unrelated records untouched", () => {
 
 test("invalid persisted data and broken foreign keys are rejected", () => {
   assert.ok(isDatabase(fixture()));
-  for (const value of [null, {}, [], { ...fixture(), version: 2 }])
+  for (const value of [null, {}, [], { ...fixture(), version: 1 }])
     assert.equal(isDatabase(value), false);
   const missingOwner = fixture();
   missingOwner.owners = [];
@@ -84,9 +95,16 @@ test("invalid persisted data and broken foreign keys are rejected", () => {
   const duplicate = fixture();
   duplicate.owners.push({ ...duplicate.owners[0] });
   assert.equal(isDatabase(duplicate), false);
-  const negativeUnits = fixture();
-  negativeUnits.properties[0].units = -2;
-  assert.equal(isDatabase(negativeUnits), false);
+  const missingUnit = fixture();
+  missingUnit.units = [];
+  assert.equal(isDatabase(missingUnit), false);
+  const wrongBuilding = fixture();
+  wrongBuilding.properties.push({ ...wrongBuilding.properties[0], id: "p2" });
+  wrongBuilding.units[0].propertyId = "p2";
+  assert.equal(isDatabase(wrongBuilding), false);
+  const duplicateUnit = fixture();
+  duplicateUnit.units.push({ id: "u2", name: "eg", propertyId: "p1" });
+  assert.equal(isDatabase(duplicateUnit), false);
   const wrongField = fixture();
   wrongField.tenants[0].email = 42;
   assert.equal(isDatabase(wrongField), false);
@@ -96,7 +114,7 @@ test("assignment filters reflect actual references", () => {
   const db = fixture();
   assert.equal(withoutAssignment("owners", db.owners[0], db), false);
   assert.equal(withoutAssignment("tenants", db.tenants[0], db), false);
-  db.tenants[0].apartment = "";
+  db.tenants[0].unitId = "";
   assert.equal(withoutAssignment("tenants", db.tenants[0], db), true);
   assert.equal(withoutAssignment("properties", db.properties[0], db), false);
   db.properties[0].ownerId = "";
@@ -106,6 +124,7 @@ test("assignment filters reflect actual references", () => {
 
 test("unknown and excluded sections cannot become management pages", () => {
   assert.equal(kindForSection("objekte"), "properties");
+  assert.equal(kindForSection("einheiten"), "units");
   assert.equal(kindForSection("profil"), undefined);
   assert.equal(kindForSection("invalid"), undefined);
 });
