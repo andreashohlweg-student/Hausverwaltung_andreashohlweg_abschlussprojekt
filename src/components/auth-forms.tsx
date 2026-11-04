@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { authClient } from "@/lib/auth/client";
 
-export function SignOutButton() {
+export function SignOutButton({ language = "de" }: { language?: "de" | "en" }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -22,12 +22,22 @@ export function SignOutButton() {
             router.replace("/anmelden");
             router.refresh();
           } catch {
-            setError("Abmelden fehlgeschlagen.");
+            setError(
+              language === "de"
+                ? "Abmelden fehlgeschlagen."
+                : "Could not sign out.",
+            );
             setPending(false);
           }
         }}
       >
-        {pending ? "Wird abgemeldet …" : "Abmelden"}
+        {pending
+          ? language === "de"
+            ? "Wird abgemeldet …"
+            : "Signing out …"
+          : language === "de"
+            ? "Abmelden"
+            : "Sign out"}
       </button>
       {error && (
         <p role="alert" className="form-error">

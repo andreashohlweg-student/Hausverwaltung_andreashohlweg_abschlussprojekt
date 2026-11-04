@@ -9,6 +9,7 @@ export default function proxy(request: NextRequest) {
       "/passwort-vergessen",
       "/passwort-zuruecksetzen",
       "/api/data",
+      "/api/damages",
       "/api/invitations",
       "/api/me",
       "/api/services",

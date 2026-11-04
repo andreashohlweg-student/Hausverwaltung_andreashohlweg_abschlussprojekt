@@ -137,3 +137,13 @@ Geprüft werden Registrierung aller drei Rollen, Sessions, wiederholte Anmeldung
 In der Objektliste führt die Anzahl in der Spalte „Einheiten“ zur Liste des Gebäudes. Dort lassen sich Einheiten einzeln anlegen und bearbeiten. Beim Mieter wird zuerst das Gebäude und dann eine seiner Einheiten gewählt. Mehrere Mieter können derselben Einheit zugeordnet sein.
 
 Die Migration übernimmt vorhandene Wohnungsbezeichnungen je Gebäude. Die angezeigte Anzahl ergibt sich aus den erfassten Einheiten. Frühere Mengenangaben bleiben in der Datenbank erhalten.
+
+## Schadensmeldungen
+
+Mieter melden einen Schaden unter „Schaden melden“ mit einer kurzen Beschreibung. Gebäude und Wohnung werden aus ihrer Zuordnung übernommen. Die Oberfläche unterstützt Deutsch und Englisch. Im Fall können Mieter und Verwaltung Nachrichten austauschen. Sichtbare Seiten aktualisieren sich alle 15 Sekunden, solange kein Formular bearbeitet wird.
+
+Die Verwaltung übernimmt einen Fall und setzt ihn damit von „Angelegt“ auf „In Bearbeitung“. Sie kann „Servicemitarbeiter beauftragt“ markieren. Beim Abschluss mit Rechnungsstellung werden Rechnungssteller, Steuernummer/USt-IdNr., Empfängeranschrift, Leistung, Leistungsdatum und Nettobetrag erfasst. Die Anwendung berechnet Steuer und Gesamtbetrag in Cent und speichert die nummerierte PDF zusammen mit dem Status in einer Transaktion. Der letzte Status wird nach Zahlungseingang manuell auf „Abgeschlossen und bezahlt“ gesetzt.
+
+Eigentümer sehen Fälle ihrer Gebäude ab „In Bearbeitung“. Nach Rechnungsstellung richtet sich der Zugriff nach dem gespeicherten Rechnungsempfänger. Eigentümer und Verwaltung führen Rückfragen zur Rechnung in einem eigenen Nachrichtenverlauf. Mieternachrichten und Eigentümerrückfragen sind gegenseitig verborgen. Eigentümer erhalten Zugriff auf ihre Rechnung, Mieter ausschließlich auf ihren Fall und ihren Nachrichtenverlauf.
+
+Fälle bleiben mit ihrer ursprünglichen Ortsangabe erhalten, wenn später Gebäude, Einheiten oder Kontakte entfernt werden. Rechnungsangaben und die ausgestellte PDF bleiben gespeichert. Die Integrationstests prüfen zusätzlich Rollenrechte, Nachrichtenkanäle, doppelte Anfragen, Revisionskonflikte und den gesamten Statusablauf. Ein anonymer Tabletzugang und eine strukturierte elektronische Rechnung gehören noch nicht zu diesem Ablauf.

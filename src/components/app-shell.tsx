@@ -22,7 +22,12 @@ export function AppShell({
   const currentKind = (Object.keys(entities) as EntityKind[]).find((kind) =>
     pathname.startsWith(`/${entities[kind].section}`),
   );
-  const currentLabel = currentKind ? entities[currentKind].plural : "Dashboard";
+  const damagesActive = pathname.startsWith("/schaeden");
+  const currentLabel = damagesActive
+    ? "Schadensmeldungen"
+    : currentKind
+      ? entities[currentKind].plural
+      : "Dashboard";
 
   return (
     <div className="app-shell">
@@ -63,6 +68,15 @@ export function AppShell({
           >
             <Icon name="dashboard" />
             <span>Dashboard</span>
+          </Link>
+          <Link
+            href="/schaeden"
+            className={`nav-link ${damagesActive ? "active" : ""}`}
+            aria-current={damagesActive ? "page" : undefined}
+            onClick={() => setMenuOpen(false)}
+          >
+            <Icon name="info" />
+            <span>Schadensmeldungen</span>
           </Link>
           {(Object.keys(entities) as EntityKind[]).map((kind) => (
             <Link

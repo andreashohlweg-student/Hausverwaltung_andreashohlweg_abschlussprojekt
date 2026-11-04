@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID, randomBytes } from "node:crypto";
 import pg from "pg";
+import { checkDamages } from "./test-damages.mjs";
 import {
   newInvitationToken,
   hashInvitationToken,
@@ -53,13 +54,16 @@ class BrowserSession {
       if (value) this.cookies.set(key, value);
       else this.cookies.delete(key);
     }
-    const text = await response.text();
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const text = new TextDecoder().decode(bytes);
     let json;
     try {
       json = JSON.parse(text);
     } catch {}
     return {
       status: response.status,
+      contentType: response.headers.get("content-type"),
+      bytes,
       json,
       text,
       location: response.headers.get("location"),
@@ -311,6 +315,16 @@ try {
     assert.ok(adminPage.location?.includes("/portal"));
     pass(`Berechtigungen und Datentrennung für ${role}`);
   }
+  await checkDamages({
+    sessions,
+    anonymous,
+    client,
+    ids,
+    run,
+    pass,
+    BrowserSession,
+    invitation,
+  });
   const snapshot = await sessions.admin.request("/api/data");
   assert.equal(snapshot.status, 200);
   assert.equal(
