@@ -8,3 +8,5 @@ node_modules
 *.log
 *.tsbuildinfo
 .DS_Store
+
+.demo-accounts.local.json

@@ -13,7 +13,8 @@
     "db:migrate": "node scripts/migrate.mjs",
     "admin:invite": "node scripts/invite-admin.mjs",
     "test:e2e": "node scripts/test-e2e.mjs",
-    "smtp:check": "node scripts/check-smtp.mjs"
+    "smtp:check": "node scripts/check-smtp.mjs",
+    "demo:setup": "node scripts/setup-demo.mjs"
   },
   "engines": {
     "node": ">=22.18.0"

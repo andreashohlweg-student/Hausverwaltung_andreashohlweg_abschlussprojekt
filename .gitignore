@@ -13,3 +13,5 @@ coverage/
 *.log
 .neon
 .vercel
+
+.demo-accounts.local.json

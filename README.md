@@ -147,3 +147,9 @@ Die Verwaltung übernimmt einen Fall und setzt ihn damit von „Angelegt“ auf 
 Eigentümer sehen Fälle ihrer Gebäude ab „In Bearbeitung“. Nach Rechnungsstellung richtet sich der Zugriff nach dem gespeicherten Rechnungsempfänger. Eigentümer und Verwaltung führen Rückfragen zur Rechnung in einem eigenen Nachrichtenverlauf. Mieternachrichten und Eigentümerrückfragen sind gegenseitig verborgen. Eigentümer erhalten Zugriff auf ihre Rechnung, Mieter ausschließlich auf ihren Fall und ihren Nachrichtenverlauf.
 
 Fälle bleiben mit ihrer ursprünglichen Ortsangabe erhalten, wenn später Gebäude, Einheiten oder Kontakte entfernt werden. Rechnungsangaben und die ausgestellte PDF bleiben gespeichert. Die Integrationstests prüfen zusätzlich Rollenrechte, Nachrichtenkanäle, doppelte Anfragen, Revisionskonflikte und den gesamten Statusablauf. Ein anonymer Tabletzugang und eine strukturierte elektronische Rechnung gehören noch nicht zu diesem Ablauf.
+
+## Beispieldaten und Demozugänge
+
+Die Migration `004_example_records.sql` übernimmt die bestehenden fiktiven Eigentümer, Mieter, Gebäude, Einheiten und Mitarbeiter. Bei einer ID-Kollision mit abweichenden Daten bricht die gesamte Migration ab. Wiederholte Ausführung mit identischen Daten erzeugt dieselben Einträge.
+
+Nach `npm run db:migrate` legt `npm run demo:setup` drei Demozugänge über den vorhandenen Registrierungsablauf sowie zwei Beispiel-Schadensfälle an. Ein Fall steht in Bearbeitung, der zweite enthält eine PDF-Rechnung und getrennte Rückfragen. Die Zugangsdaten werden ausgegeben und für erneute Ausführung lokal in `.demo-accounts.local.json` gespeichert. Diese Datei ist von Git und Vercel-Uploads ausgeschlossen. Das Skript verwendet `APP_URL` und die Datenbank aus dem Environment. Ein Testbranch kann mit einem eigenen `DEMO_ACCOUNTS_FILE` verwendet werden.
