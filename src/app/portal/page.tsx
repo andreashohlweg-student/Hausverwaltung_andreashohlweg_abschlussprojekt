@@ -7,6 +7,8 @@ import { listDamages } from "@/lib/server/damages";
 import { damageLanguage } from "@/lib/server/damage-language";
 import { damageText } from "@/lib/damage";
 import { DamageList } from "@/components/damage-view";
+import { listOwnerProperties } from "@/lib/server/owner-properties";
+import { OwnerPropertyCard } from "@/components/owner-property-card";
 import { DamageRefresh } from "@/components/damage-forms";
 export const metadata = { title: "Mein Zugang" };
 export const dynamic = "force-dynamic";
@@ -16,16 +18,11 @@ export default async function PortalPage() {
   const language = await damageLanguage();
   const t = damageText[language];
   const reports = await listDamages(user);
+  const ownerProperties =
+    user.role === "owner" ? await listOwnerProperties(user) : [];
   const properties =
     user.role === "owner"
-      ? (
-          await getPool().query(
-            `SELECT p.id,p.name,p.street,p.postal_code,p.city,
-              ARRAY(SELECT u.name FROM hausportal.units u WHERE u.property_id=p.id ORDER BY u.name,u.id) AS units
-            FROM hausportal.properties p WHERE p.owner_id=$1 ORDER BY p.name`,
-            [user.ownerId],
-          )
-        ).rows
+      ? []
       : (
           await getPool().query(
             `SELECT p.id,p.name,p.street,p.postal_code,p.city,u.name AS unit_name
@@ -42,9 +39,7 @@ export default async function PortalPage() {
       <div className="page-heading">
         <h1>
           {user.role === "owner"
-            ? language === "de"
-              ? "Meine Objekte"
-              : "My buildings"
+            ? "Dashboard"
             : language === "de"
               ? "Meine Wohnung"
               : "My apartment"}
@@ -73,7 +68,23 @@ export default async function PortalPage() {
         </dd>
       </dl>
       <div className="portal-properties">
-        {properties.length ? (
+        {user.role === "owner" ? (
+          ownerProperties.length ? (
+            ownerProperties.map((property) => (
+              <OwnerPropertyCard
+                key={property.id}
+                property={property}
+                language={language}
+              />
+            ))
+          ) : (
+            <p>
+              {language === "de"
+                ? "Keine Objekte zugeordnet."
+                : "No buildings assigned."}
+            </p>
+          )
+        ) : properties.length ? (
           properties.map((property) => (
             <article className="portal-property" key={property.id}>
               <h2>{property.name}</h2>
@@ -82,39 +93,19 @@ export default async function PortalPage() {
                 <br />
                 {property.postal_code} {property.city}
               </p>
-              {user.role === "owner" ? (
-                property.units.length ? (
-                  <ul>
-                    {property.units.map((name: string) => (
-                      <li key={name}>{name}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p>
-                    {language === "de"
-                      ? "Keine Einheiten erfasst."
-                      : "No apartments recorded."}
-                  </p>
-                )
-              ) : (
-                <p>
-                  {property.unit_name ??
-                    (language === "de"
-                      ? "Keine Wohnung zugeordnet."
-                      : "No apartment assigned.")}
-                </p>
-              )}
+              <p>
+                {property.unit_name ??
+                  (language === "de"
+                    ? "Keine Wohnung zugeordnet."
+                    : "No apartment assigned.")}
+              </p>
             </article>
           ))
         ) : (
           <p>
-            {user.role === "owner"
-              ? language === "de"
-                ? "Keine Objekte zugeordnet."
-                : "No buildings assigned."
-              : language === "de"
-                ? "Keine Wohnung zugeordnet."
-                : "No apartment assigned."}
+            {language === "de"
+              ? "Keine Wohnung zugeordnet."
+              : "No apartment assigned."}
           </p>
         )}
       </div>
@@ -122,7 +113,11 @@ export default async function PortalPage() {
         <div className="section-heading">
           <h2>{t.reports}</h2>
         </div>
-        <DamageList reports={reports} language={language} />
+        <DamageList
+          reports={reports}
+          language={language}
+          owner={user.role === "owner"}
+        />
       </section>
     </>
   );

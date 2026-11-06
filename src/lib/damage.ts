@@ -9,6 +9,7 @@ export type DamageLanguage = "de" | "en";
 export type MessageChannel = "tenant" | "owner";
 export interface DamageSummary {
   id: string;
+  propertyId: string | null;
   location: string;
   description: string;
   language: DamageLanguage;
@@ -134,3 +135,10 @@ export const damageText = {
     },
   },
 } as const;
+
+export type BuildingDamageFilter = "all" | "open" | "invoice";
+export function parseBuildingDamageFilter(
+  value: unknown,
+): BuildingDamageFilter {
+  return value === "open" || value === "invoice" ? value : "all";
+}

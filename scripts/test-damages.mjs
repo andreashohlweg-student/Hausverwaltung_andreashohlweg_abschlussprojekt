@@ -71,6 +71,30 @@ export async function checkDamages({
     "Mieter meldet mit einem Textfeld; Wiederholung erzeugt keinen zweiten Fall; Eigentümer sieht Angelegt nicht",
   );
 
+  const buildingRoute = `/portal/gebaeude/${ids.property}`;
+  const buildingIndex = await owner.request("/portal/gebaeude");
+  assert.equal(buildingIndex.status, 200);
+  assert.ok(buildingIndex.text.includes(buildingRoute));
+  assert.ok(buildingIndex.text.includes("Gebäude suchen"));
+  assert.ok(!buildingIndex.text.includes(`Fremdes Haus ${run}`));
+  assert.equal(
+    (await owner.request(`/portal/gebaeude/${ids.otherProperty}`)).status,
+    404,
+  );
+  assert.equal(
+    (await owner.request("/portal/gebaeude/missing-property")).status,
+    404,
+  );
+  assert.ok(
+    (await tenant.request(buildingRoute)).location?.includes("/portal"),
+  );
+  const hiddenReport = await owner.request(buildingRoute);
+  assert.equal(hiddenReport.status, 200);
+  assert.ok(!hiddenReport.text.includes(description));
+  pass(
+    "Gebäudeseiten zeigen nur eigene Gebäude und halten neue Meldungen verborgen",
+  );
+
   const otherTenantId = `damage-other-tenant-${run}`;
   const otherTenantEmail = `damage-other-tenant-${run}@example.com`;
   await client.query(
@@ -144,6 +168,18 @@ export async function checkDamages({
   pass(
     "Übernahme startet Bearbeitung; Eigentümersicht und parallele Bearbeitung sind geschützt",
   );
+
+  const openBuilding = await owner.request(buildingRoute + "?filter=open");
+  assert.equal(openBuilding.status, 200);
+  assert.ok(openBuilding.text.includes(description));
+  assert.ok(
+    !(await owner.request(buildingRoute + "?filter=invoice")).text.includes(
+      description,
+    ),
+  );
+  const dashboard = await owner.request("/portal");
+  assert.ok(dashboard.text.includes("Dashboard"));
+  assert.ok(dashboard.text.includes(buildingRoute));
 
   const tenantMessage = {
     id: randomUUID(),
@@ -272,6 +308,25 @@ export async function checkDamages({
     ),
   );
   assert.deepEqual(attempts.map((result) => result.status).sort(), [200, 409]);
+  const invoicedBuilding = await owner.request(
+    buildingRoute + "?filter=invoice",
+  );
+  assert.ok(invoicedBuilding.text.includes(description));
+  assert.ok(
+    !(await owner.request(buildingRoute + "?filter=open")).text.includes(
+      description,
+    ),
+  );
+  const scopedReport = await owner.request(
+    `/portal/schaeden/${reportId}?gebaeude=${ids.property}&filter=invoice`,
+  );
+  assert.ok(
+    scopedReport.text.includes(`href="${buildingRoute}?filter=invoice"`),
+  );
+  pass(
+    "Gebäudefilter trennen offene und abgerechnete Fälle und erhalten den Rückweg",
+  );
+
   const invoiceRows = await client.query(
     "SELECT number,details FROM hausportal.damage_invoices WHERE damage_id=$1",
     [reportId],
@@ -354,6 +409,11 @@ export async function checkDamages({
     200,
   );
   assert.equal((await owner.request(route)).json.report.status, "paid");
+  assert.ok(
+    (await owner.request(buildingRoute + "?filter=invoice")).text.includes(
+      description,
+    ),
+  );
   const paidPDF = await owner.request(`${route}/invoice`);
   assert.deepEqual(paidPDF.bytes, pdf.bytes);
   assert.equal(

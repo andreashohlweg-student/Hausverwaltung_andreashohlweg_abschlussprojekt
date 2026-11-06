@@ -4,6 +4,7 @@ import { damageId } from "@/lib/server/damage-http";
 import { loadDamage } from "@/lib/server/damages";
 import { damageLanguage } from "@/lib/server/damage-language";
 import { DamageView } from "@/components/damage-view";
+import { parseBuildingDamageFilter } from "@/lib/damage";
 import { DamageRefresh } from "@/components/damage-forms";
 export const metadata = { title: "Schadensmeldung" };
 export default async function DamagePage({
@@ -11,7 +12,11 @@ export default async function DamagePage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ created?: string }>;
+  searchParams: Promise<{
+    created?: string;
+    gebaeude?: string | string[];
+    filter?: string | string[];
+  }>;
 }) {
   const user = await requireUser();
   const rawId = (await params).id;
@@ -19,6 +24,14 @@ export default async function DamagePage({
   try {
     const id = damageId(rawId);
     const detail = await loadDamage(id, user);
+    const query = await searchParams;
+    const filter = parseBuildingDamageFilter(query.filter);
+    const backHref =
+      user.role === "owner" &&
+      typeof query.gebaeude === "string" &&
+      query.gebaeude === detail.report.propertyId
+        ? `/portal/gebaeude/${encodeURIComponent(query.gebaeude)}${filter === "all" ? "" : `?filter=${filter}`}`
+        : undefined;
     return (
       <>
         <DamageRefresh />
@@ -26,7 +39,8 @@ export default async function DamagePage({
           detail={detail}
           user={user}
           language={await damageLanguage()}
-          created={(await searchParams).created === "1"}
+          created={query.created === "1"}
+          backHref={backHref}
         />
       </>
     );

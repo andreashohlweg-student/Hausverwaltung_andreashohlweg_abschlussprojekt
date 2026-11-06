@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/server/access";
 import { damageLanguage } from "@/lib/server/damage-language";
 import { DamageLanguageSwitch } from "@/components/damage-forms";
+import { OwnerNavigation } from "@/components/owner-navigation";
 import { SignOutButton } from "@/components/auth-forms";
 export const dynamic = "force-dynamic";
 export default async function PortalLayout({
@@ -9,7 +10,7 @@ export default async function PortalLayout({
 }: {
   children: React.ReactNode;
 }) {
-  await requireUser();
+  const user = await requireUser();
   const language = await damageLanguage();
   return (
     <div className="portal-shell" lang={language}>
@@ -22,7 +23,10 @@ export default async function PortalLayout({
           <SignOutButton language={language} />
         </div>
       </header>
-      <main className="portal-content">{children}</main>
+      <main className="portal-content">
+        {user.role === "owner" && <OwnerNavigation language={language} />}
+        {children}
+      </main>
     </div>
   );
 }

@@ -17,9 +17,10 @@ import type { DamageUpdate } from "./damage-validation";
 
 interface DamageRow extends DamageSummary {
   reporterId: string | null;
+  currentOwnerId: string | null;
   ownerAccessId: string | null;
 }
-const selectDamage = `SELECT d.id,d.location,d.description,d.language,d.status,d.version,
+const selectDamage = `SELECT d.id,d.property_id AS "propertyId",p.owner_id AS "currentOwnerId",d.location,d.description,d.language,d.status,d.version,
   d.reporter_id AS "reporterId",d.assignee_id AS "assigneeId",a.name AS "assigneeName",
   d.service_ordered AS "serviceOrdered",d.created_at::text AS "createdAt",d.updated_at::text AS "updatedAt",
   i.number AS "invoiceNumber",o.name AS "ownerName",r.name AS "reporterName",
@@ -42,7 +43,14 @@ function canRead(user: AppUser, row: DamageRow) {
   );
 }
 function publicReport(row: DamageRow, user: AppUser): DamageSummary {
-  const { reporterId: _reporter, ownerAccessId: _owner, ...report } = row;
+  const {
+    reporterId: _reporter,
+    ownerAccessId: _owner,
+    currentOwnerId,
+    ...report
+  } = row;
+  if (user.role === "owner" && currentOwnerId !== user.ownerId)
+    report.propertyId = null;
   if (user.role !== "admin") {
     report.assigneeId = null;
     report.reporterName = null;
@@ -67,7 +75,10 @@ async function lockedReport(client: PoolClient, id: string, user: AppUser) {
     throw new RequestError("Schadensmeldung nicht gefunden.", 404);
   return rows[0];
 }
-export async function listDamages(user: AppUser): Promise<DamageSummary[]> {
+export async function listDamages(
+  user: AppUser,
+  propertyId?: string,
+): Promise<DamageSummary[]> {
   let scope = "true";
   let value: string[] = [];
   if (user.role === "tenant") {
@@ -78,6 +89,10 @@ export async function listDamages(user: AppUser): Promise<DamageSummary[]> {
     scope =
       "d.status<>'created' AND (CASE WHEN i.damage_id IS NOT NULL THEN i.owner_id ELSE p.owner_id END)=$1";
     value = [user.ownerId ?? ""];
+  }
+  if (propertyId !== undefined) {
+    value.push(propertyId);
+    scope = `(${scope}) AND d.property_id=$${value.length}`;
   }
   const { rows } = await getPool().query<DamageRow>(
     `${selectDamage} WHERE ${scope} ORDER BY d.created_at DESC,d.id`,
