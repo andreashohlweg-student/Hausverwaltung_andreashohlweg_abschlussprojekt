@@ -728,6 +728,21 @@ tbody tr:hover {
   white-space: normal;
   line-height: 1.8;
 }
+.owner-assignment {
+  display: grid;
+  gap: 8px;
+}
+.owner-assignment select {
+  width: 100%;
+  min-width: 185px;
+  min-height: 38px;
+  border: 1px solid #dfe5e8;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: white;
+  color: var(--ink);
+  font: inherit;
+}
 .actions-heading {
   text-align: right;
 }

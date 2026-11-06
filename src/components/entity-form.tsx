@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition, type FormEvent } from "react";
 import {
   entities,
-  withoutAssignment,
+  ownersForSelection,
   type EntityKind,
   type Records,
   type Property,
@@ -83,19 +83,7 @@ function LoadedForm({
   const listHref = `/${config.section}${buildingFilter ? `?gebaeude=${encodeURIComponent(buildingFilter)}` : ""}`;
   const hasContact = kind !== "properties" && kind !== "units";
   const title = `${config.singular} ${record ? "bearbeiten" : "anlegen"}`;
-  const ownerOptions =
-    kind === "properties"
-      ? data.owners
-          .map((owner) => ({
-            ...owner,
-            isOpen: withoutAssignment("owners", owner, data),
-          }))
-          .sort(
-            (a, b) =>
-              Number(b.isOpen) - Number(a.isOpen) ||
-              a.name.localeCompare(b.name, "de", { sensitivity: "base" }),
-          )
-      : [];
+  const ownerOptions = kind === "properties" ? ownersForSelection(data) : [];
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

@@ -96,6 +96,19 @@ export function withoutAssignment(
   return false;
 }
 
+export function ownersForSelection(data: Database) {
+  return data.owners
+    .map((owner) => ({
+      ...owner,
+      isOpen: withoutAssignment("owners", owner, data),
+    }))
+    .sort(
+      (a, b) =>
+        Number(b.isOpen) - Number(a.isOpen) ||
+        a.name.localeCompare(b.name, "de", { sensitivity: "base" }),
+    );
+}
+
 /** Keep related records when a record is removed, clearing only its references. */
 export function removeRecord(
   data: Database,

@@ -7,6 +7,7 @@ import {
   entities,
   removeRecord,
   withoutAssignment,
+  ownersForSelection,
   type EntityKind,
   type Owner,
   type Tenant,
@@ -28,6 +29,9 @@ export function EntityList({ kind }: { kind: EntityKind }) {
   const { data, ready, save, accounts, invite } = useData();
   const [sendingInvite, setSendingInvite] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [savingOwnerId, setSavingOwnerId] = useState<string | null>(null);
+  const assigningOwner = useRef(false);
+  const ownerOptions = kind === "properties" ? ownersForSelection(data) : [];
   const searchParams = useSearchParams();
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -115,6 +119,27 @@ export function EntityList({ kind }: { kind: EntityKind }) {
     setDeleting(false);
   }
 
+  async function assignOwner(propertyId: string, ownerId: string) {
+    if (!ownerId || assigningOwner.current) return;
+    assigningOwner.current = true;
+    setSavingOwnerId(propertyId);
+    setNotice("");
+    try {
+      if (
+        await save({
+          ...data,
+          properties: data.properties.map((property) =>
+            property.id === propertyId ? { ...property, ownerId } : property,
+          ),
+        })
+      )
+        setNotice("Eigentümer wurde zugeordnet.");
+    } finally {
+      assigningOwner.current = false;
+      setSavingOwnerId(null);
+    }
+  }
+
   function cells(record: Records[EntityKind]) {
     if (kind === "owners") {
       const owner = record as Owner;
@@ -185,7 +210,40 @@ export function EntityList({ kind }: { kind: EntityKind }) {
             {owner ? (
               owner.name
             ) : (
-              <span className="badge warning">Ohne Eigentümer</span>
+              <div className="owner-assignment">
+                <select
+                  aria-label={`Eigentümer für ${property.name} zuordnen`}
+                  value=""
+                  disabled={
+                    savingOwnerId !== null ||
+                    deleting ||
+                    ownerOptions.length === 0
+                  }
+                  aria-busy={savingOwnerId === property.id}
+                  onChange={(event) =>
+                    void assignOwner(property.id, event.target.value)
+                  }
+                >
+                  <option value="" disabled>
+                    {savingOwnerId === property.id
+                      ? "Wird gespeichert …"
+                      : ownerOptions.length
+                        ? "Eigentümer auswählen"
+                        : "Keine Eigentümer vorhanden"}
+                  </option>
+                  {ownerOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.name}
+                      {option.isOpen ? " (offen)" : ""}
+                    </option>
+                  ))}
+                </select>
+                {ownerOptions.length === 0 && (
+                  <Link className="edit-link" href="/eigentuemer/neu">
+                    Eigentümer anlegen
+                  </Link>
+                )}
+              </div>
             )}
           </td>
           <td>
@@ -444,6 +502,7 @@ export function EntityList({ kind }: { kind: EntityKind }) {
                       </Link>
                       <button
                         className="icon-button delete-button"
+                        disabled={savingOwnerId !== null}
                         onClick={() => setPendingDelete(record)}
                         aria-label={`${record.name} löschen`}
                         title="Löschen"
