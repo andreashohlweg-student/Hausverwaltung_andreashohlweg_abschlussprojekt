@@ -1,17 +1,17 @@
+import "server-only";
 import { cache } from "react";
 import { redirect } from "next/navigation";
 import { getAuth } from "@/lib/auth/server";
 import { getPool } from "./db";
 import type { AppUser } from "@/lib/account";
+import { findActiveUser } from "./repositories/accounts";
+import { RequestError } from "./errors";
+export { RequestError } from "./errors";
 
 export const getCurrentUser = cache(async (): Promise<AppUser | null> => {
   const { data: session } = await getAuth().getSession();
   if (!session?.user) return null;
-  const { rows } = await getPool().query<AppUser>(
-    'SELECT id, email, name, role, owner_id AS "ownerId", tenant_id AS "tenantId" FROM hausportal.users WHERE id=$1 AND active=true',
-    [session.user.id],
-  );
-  return rows[0] ?? null;
+  return findActiveUser(getPool(), session.user.id);
 });
 
 export async function requireUser() {
@@ -25,14 +25,6 @@ export async function requireAdmin() {
   return user;
 }
 
-export class RequestError extends Error {
-  constructor(
-    message: string,
-    public status: number,
-  ) {
-    super(message);
-  }
-}
 export function assertSameOrigin(request: Request) {
   const origin = request.headers.get("origin");
   const expected = process.env.APP_URL;
@@ -47,6 +39,27 @@ export function assertSameOrigin(request: Request) {
 export function errorResponse(error: unknown) {
   if (error instanceof RequestError)
     return Response.json({ error: error.message }, { status: error.status });
+  const code =
+    error && typeof error === "object" && "code" in error
+      ? error.code
+      : undefined;
+  if (code === "23505")
+    return Response.json(
+      { error: "Ein Eintrag mit diesen eindeutigen Daten besteht bereits." },
+      { status: 409 },
+    );
+  if (code === "23503" || code === "23001")
+    return Response.json(
+      {
+        error: "Der Eintrag ist noch verknüpft oder wurde inzwischen entfernt.",
+      },
+      { status: 409 },
+    );
+  if (code === "23514" || code === "23502")
+    return Response.json(
+      { error: "Die Daten verletzen eine Zuordnungsregel." },
+      { status: 400 },
+    );
   console.error("Hausportal-Anfrage fehlgeschlagen.");
   return Response.json(
     { error: "Die Anfrage konnte nicht verarbeitet werden." },

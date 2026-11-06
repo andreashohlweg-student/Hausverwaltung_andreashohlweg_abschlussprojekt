@@ -187,6 +187,83 @@ export function DamageMessageForm({
     </form>
   );
 }
+export function DamageOwnerForm({
+  report,
+  owners,
+}: {
+  report: DamageSummary;
+  owners: { id: string; name: string }[];
+}) {
+  const router = useRouter();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const busy = useRef(false);
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (busy.current) return;
+    const ownerId = String(
+      new FormData(event.currentTarget).get("ownerId") || "",
+    );
+    busy.current = true;
+    setSaving(true);
+    setError("");
+    try {
+      await sendRequest(
+        `/api/damages/${report.id}`,
+        "PATCH",
+        {
+          action: "assign_owner",
+          version: report.version,
+          ownerId: ownerId || null,
+        },
+        "Zuordnung fehlgeschlagen.",
+      );
+      router.refresh();
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : "Zuordnung fehlgeschlagen.",
+      );
+    } finally {
+      busy.current = false;
+      setSaving(false);
+    }
+  }
+  return (
+    <section className="damage-panel">
+      <h2>Eigentümer</h2>
+      {report.invoiceNumber ? (
+        <p>Rechnungsempfänger: {report.ownerName ?? "Nicht mehr hinterlegt"}</p>
+      ) : (
+        <form className="damage-compose" onSubmit={submit}>
+          <label className="field">
+            <span>Eigentümer zuordnen</span>
+            <select
+              name="ownerId"
+              defaultValue={report.ownerId ?? ""}
+              disabled={saving}
+            >
+              <option value="">Ohne Zuordnung</option>
+              {owners.map((owner) => (
+                <option key={owner.id} value={owner.id}>
+                  {owner.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {error && (
+            <p role="alert" className="form-error">
+              {error}
+            </p>
+          )}
+          <button className="button primary" disabled={saving}>
+            {saving ? "Wird gespeichert …" : "Zuordnung speichern"}
+          </button>
+        </form>
+      )}
+    </section>
+  );
+}
+
 export function DamageAdminForm({
   report,
   userId,

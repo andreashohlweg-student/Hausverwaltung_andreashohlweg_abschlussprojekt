@@ -1,3 +1,4 @@
+import "server-only";
 import { cookies } from "next/headers";
 import type { DamageLanguage } from "@/lib/damage";
 export async function damageLanguage(): Promise<DamageLanguage> {

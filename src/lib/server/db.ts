@@ -1,4 +1,5 @@
-import { Pool } from "pg";
+import "server-only";
+import { Pool, type PoolClient } from "pg";
 import { attachDatabasePool } from "@vercel/functions";
 
 const globalDatabase = globalThis as unknown as { hausportalPool?: Pool };
@@ -18,4 +19,34 @@ export function getPool(): Pool {
     globalDatabase.hausportalPool = pool;
   }
   return globalDatabase.hausportalPool;
+}
+
+export type DatabaseClient = Pick<PoolClient, "query">;
+
+export async function transaction<T>(
+  work: (client: PoolClient) => Promise<T>,
+  readOnly = false,
+): Promise<T> {
+  const client = await getPool().connect();
+  try {
+    await client.query(
+      readOnly ? "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY" : "BEGIN",
+    );
+    const result = await work(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+// All writes that can affect case location or assignment use this lock first.
+export async function lockApplicationState(client: DatabaseClient) {
+  const { rows } = await client.query<{ revision: string }>(
+    "SELECT revision FROM hausportal.state WHERE id=1 FOR UPDATE",
+  );
+  return Number(rows[0].revision);
 }

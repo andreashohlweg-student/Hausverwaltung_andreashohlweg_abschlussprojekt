@@ -55,6 +55,8 @@ Er liest `.env.local` erst beim Containerstart ein. Der Build benötigt keine pr
 
 ## Architektur
 
+Die vollständige Prüfung, das Beziehungsdiagramm, die Zugriffsschichten und konkrete SQL-Beispiele stehen in [docs/architektur.md](docs/architektur.md).
+
 | Bereich                | Aufgabe                                                                       |
 | ---------------------- | ----------------------------------------------------------------------------- |
 | `src/app/(verwaltung)` | Geschützte Admin-Routen; Server Components prüfen den Zugang und laden Daten. |
@@ -67,7 +69,7 @@ Er liest `.env.local` erst beim Containerstart ein. Der Build benötigt keine pr
 | `hello.ts`             | Neon Function: authentifizierter Einladungsversand über SMTP.                 |
 | `neon.ts`              | Deklaration von Neon Auth und Function-Konfiguration.                         |
 
-Der Clientzustand wird vom Server initialisiert und über `/api/data` gespeichert. Änderungen laufen transaktional; eine Revision verhindert das Überschreiben neuerer Datenstände. Postgres-Verbindungen verwenden `pg` mit begrenztem Pool, auf Vercel mit `attachDatabasePool`. Migrationen nutzen die direkte Datenbankverbindung. Auth-Cookies verwaltet das Neon-SDK. Der Next.js-Server ruft die Function mit einem privaten gemeinsamen Geheimnis auf; dieses gelangt nicht in den Browser.
+Der Clientzustand wird vom Server initialisiert und über `/api/data` gespeichert. Der Server schreibt dabei nur neue, geänderte und ausdrücklich entfernte Stammdatensätze. Änderungen laufen transaktional; eine Revision verhindert das Überschreiben neuerer Datenstände. Falllisten, Details, Nachrichten, Verlauf und PDFs verwenden die zentrale Sicht `damage_access`. SQL liegt in Repositories; Services führen die fachlichen Abläufe aus. Postgres-Verbindungen verwenden `pg` mit begrenztem Pool, auf Vercel mit `attachDatabasePool`. Migrationen nutzen die direkte Datenbankverbindung. Auth-Cookies verwaltet das Neon-SDK. Der Next.js-Server ruft die Function mit einem privaten gemeinsamen Geheimnis auf; dieses gelangt nicht in den Browser.
 
 Das Dashboard enthält Schnellaktionen und anklickbare Zuordnungskacheln. Routen: `/dashboard`, `/eigentuemer`, `/mieter`, `/objekte`, `/mitarbeiter`; jeweils Listen und Formularseiten. Die Eigentümerauswahl zeigt zuerst alphabetisch Eigentümer ohne Objekt mit „(offen)“, danach die übrigen.
 
@@ -121,6 +123,7 @@ Migrationen werden bewusst separat ausgeführt, statt bei jedem Frontend-Build. 
 npm run typecheck
 npm test
 npm run build
+npm run db:audit
 npm audit
 ```
 
@@ -144,7 +147,7 @@ Mieter melden einen Schaden unter „Schaden melden“ mit einer kurzen Beschrei
 
 Die Verwaltung übernimmt einen Fall und setzt ihn damit von „Angelegt“ auf „In Bearbeitung“. Sie kann „Servicemitarbeiter beauftragt“ markieren. Beim Abschluss mit Rechnungsstellung werden Rechnungssteller, Steuernummer/USt-IdNr., Empfängeranschrift, Leistung, Leistungsdatum und Nettobetrag erfasst. Die Anwendung berechnet Steuer und Gesamtbetrag in Cent und speichert die nummerierte PDF zusammen mit dem Status in einer Transaktion. Der letzte Status wird nach Zahlungseingang manuell auf „Abgeschlossen und bezahlt“ gesetzt.
 
-Eigentümer sehen Fälle ihrer Gebäude ab „In Bearbeitung“. Nach Rechnungsstellung richtet sich der Zugriff nach dem gespeicherten Rechnungsempfänger. Eigentümer und Verwaltung führen Rückfragen zur Rechnung in einem eigenen Nachrichtenverlauf. Mieternachrichten und Eigentümerrückfragen sind gegenseitig verborgen. Eigentümer erhalten Zugriff auf ihre Rechnung, Mieter ausschließlich auf ihren Fall und ihren Nachrichtenverlauf.
+Eigentümer sehen ihnen ausdrücklich zugeordnete Fälle ab „In Bearbeitung“. Die erste Zuordnung wird bei der Meldung vom Gebäude übernommen. Ein späterer Gebäudeeigentümerwechsel lässt offene Fälle zunächst unzugeordnet; die Verwaltung kann sie im Fall neu zuordnen. Die Eigentümerhistorie bleibt erhalten. Abgerechnete Fälle und PDFs bleiben beim bisherigen Rechnungsempfänger. Eigentümer und Verwaltung führen Rückfragen zur Rechnung in einem eigenen Nachrichtenverlauf. Mieternachrichten und Eigentümerrückfragen sind gegenseitig verborgen. Eigentümer erhalten Zugriff auf ihre Rechnung, Mieter ausschließlich auf ihren Fall und ihren Nachrichtenverlauf.
 
 Fälle bleiben mit ihrer ursprünglichen Ortsangabe erhalten, wenn später Gebäude, Einheiten oder Kontakte entfernt werden. Rechnungsangaben und die ausgestellte PDF bleiben gespeichert. Die Integrationstests prüfen zusätzlich Rollenrechte, Nachrichtenkanäle, doppelte Anfragen, Revisionskonflikte und den gesamten Statusablauf. Ein anonymer Tabletzugang und eine strukturierte elektronische Rechnung gehören noch nicht zu diesem Ablauf.
 

@@ -7,7 +7,7 @@ import {
 } from "@/lib/server/damage-http";
 import { addDamageMessage } from "@/lib/server/damages";
 import { damageMessageRequest } from "@/lib/server/damage-validation";
-import { rateLimit } from "@/lib/server/invitations";
+import { rateLimit } from "@/lib/server/rate-limit";
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },

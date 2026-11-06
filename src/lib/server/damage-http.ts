@@ -1,3 +1,4 @@
+import "server-only";
 import { z } from "zod";
 import { getCurrentUser, RequestError } from "./access";
 export async function damageApiUser() {

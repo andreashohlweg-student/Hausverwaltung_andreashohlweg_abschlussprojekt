@@ -21,6 +21,7 @@ export interface DamageSummary {
   createdAt: string;
   updatedAt: string;
   invoiceNumber: string | null;
+  ownerId: string | null;
   ownerName: string | null;
   reporterName: string | null;
 }
@@ -35,7 +36,25 @@ export interface DamageMessage {
 export interface DamageDetail {
   report: DamageSummary;
   messages: DamageMessage[];
-  events: { status: DamageStatus; createdAt: string }[];
+  events: {
+    status: DamageStatus;
+    createdAt: string;
+    actorName: string | null;
+  }[];
+  ownerAssignments: {
+    id: string;
+    ownerId: string | null;
+    ownerName: string;
+    assignedAt: string;
+    endedAt: string | null;
+    source: "migration" | "report" | "manual";
+    endReason:
+      | "reassigned"
+      | "unassigned"
+      | "building_owner_changed"
+      | "owner_removed"
+      | null;
+  }[];
 }
 export interface InvoiceInput {
   issuer: string;

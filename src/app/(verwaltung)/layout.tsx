@@ -10,8 +10,8 @@ export default async function AdminLayout({
 }) {
   const user = await requireAdmin();
   const [{ data, revision }, accounts] = await Promise.all([
-    loadDatabase(),
-    loadAccountStatuses(),
+    loadDatabase(user),
+    loadAccountStatuses(user),
   ]);
   return (
     <DataProvider

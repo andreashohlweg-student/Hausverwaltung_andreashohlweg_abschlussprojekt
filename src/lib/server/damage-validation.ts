@@ -22,13 +22,25 @@ export const newDamageRequest = z.object({
   description: text(6000),
   language: z.enum(["de", "en"]),
 });
-export const damageUpdateRequest = z.object({
+const caseEditRequest = z.object({
   version: z.number().int().positive(),
-  action: z.enum(["claim", "update"]),
+  action: z.literal("update"),
   status: z.enum(damageStatuses).optional(),
   serviceOrdered: z.boolean().optional(),
   invoice: invoice.optional(),
 });
+export const damageUpdateRequest = z.discriminatedUnion("action", [
+  caseEditRequest,
+  z.object({
+    action: z.literal("claim"),
+    version: z.number().int().positive(),
+  }),
+  z.object({
+    action: z.literal("assign_owner"),
+    version: z.number().int().positive(),
+    ownerId: z.string().min(1).max(100).nullable(),
+  }),
+]);
 export type DamageUpdate = z.infer<typeof damageUpdateRequest>;
 export const damageMessageRequest = z.object({
   id: z.uuid(),

@@ -1,3 +1,4 @@
+import "server-only";
 import PDFDocument from "pdfkit";
 import path from "node:path";
 import type { InvoiceSnapshot } from "../damage";

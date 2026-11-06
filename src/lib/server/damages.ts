@@ -1,245 +1,155 @@
-import type { PoolClient } from "pg";
+import "server-only";
 import type { AppUser } from "@/lib/account";
 import {
   invoiceTotals,
   nextDamageStatus,
   type DamageDetail,
   type DamageSummary,
-  type DamageMessage,
   type DamageLanguage,
   type InvoiceSnapshot,
   type MessageChannel,
 } from "@/lib/damage";
-import { getPool } from "./db";
-import { RequestError } from "./access";
+import {
+  getPool,
+  transaction,
+  lockApplicationState,
+  type DatabaseClient,
+} from "./db";
+import { RequestError } from "./errors";
 import { renderDamageInvoice } from "./damage-invoice";
 import type { DamageUpdate } from "./damage-validation";
+import { requireAdministrator } from "./policies/accounts";
+import * as cases from "./repositories/damages";
+import * as assignments from "./repositories/assignments";
+import { findTenantHome } from "./repositories/housing";
+import { publicReport, assertMessageChannel } from "./policies/damages";
 
-interface DamageRow extends DamageSummary {
-  reporterId: string | null;
-  currentOwnerId: string | null;
-  ownerAccessId: string | null;
+async function requireCase(
+  client: DatabaseClient,
+  id: string,
+  user: AppUser,
+  lock = false,
+) {
+  if (lock) await cases.lockDamage(client, id);
+  const [row] = await cases.findDamages(client, user.id, { id });
+  if (!row) throw new RequestError("Schadensmeldung nicht gefunden.", 404);
+  return row;
 }
-const selectDamage = `SELECT d.id,d.property_id AS "propertyId",p.owner_id AS "currentOwnerId",d.location,d.description,d.language,d.status,d.version,
-  d.reporter_id AS "reporterId",d.assignee_id AS "assigneeId",a.name AS "assigneeName",
-  d.service_ordered AS "serviceOrdered",d.created_at::text AS "createdAt",d.updated_at::text AS "updatedAt",
-  i.number AS "invoiceNumber",o.name AS "ownerName",r.name AS "reporterName",
-  CASE WHEN i.damage_id IS NOT NULL THEN i.owner_id ELSE p.owner_id END AS "ownerAccessId"
-  FROM hausportal.damages d
-  LEFT JOIN hausportal.properties p ON p.id=d.property_id
-  LEFT JOIN hausportal.damage_invoices i ON i.damage_id=d.id
-  LEFT JOIN hausportal.owners o ON o.id=CASE WHEN i.damage_id IS NOT NULL THEN i.owner_id ELSE p.owner_id END
-  LEFT JOIN hausportal.users a ON a.id=d.assignee_id
-  LEFT JOIN hausportal.users r ON r.id=d.reporter_id`;
 
-function canRead(user: AppUser, row: DamageRow) {
-  return (
-    user.role === "admin" ||
-    (user.role === "tenant" && row.reporterId === user.id) ||
-    (user.role === "owner" &&
-      row.status !== "created" &&
-      !!user.ownerId &&
-      row.ownerAccessId === user.ownerId)
-  );
-}
-function publicReport(row: DamageRow, user: AppUser): DamageSummary {
-  const {
-    reporterId: _reporter,
-    ownerAccessId: _owner,
-    currentOwnerId,
-    ...report
-  } = row;
-  if (user.role === "owner" && currentOwnerId !== user.ownerId)
-    report.propertyId = null;
-  if (user.role !== "admin") {
-    report.assigneeId = null;
-    report.reporterName = null;
-    if (user.role === "tenant") {
-      report.invoiceNumber = null;
-      report.ownerName = null;
-      report.serviceOrdered = false;
-    }
-  }
-  return report;
-}
-async function lockedReport(client: PoolClient, id: string, user: AppUser) {
-  await client.query(
-    "SELECT id FROM hausportal.damages WHERE id=$1 FOR UPDATE",
-    [id],
-  );
-  const { rows } = await client.query<DamageRow>(
-    `${selectDamage} WHERE d.id=$1`,
-    [id],
-  );
-  if (!rows[0] || !canRead(user, rows[0]))
-    throw new RequestError("Schadensmeldung nicht gefunden.", 404);
-  return rows[0];
-}
 export async function listDamages(
   user: AppUser,
   propertyId?: string,
 ): Promise<DamageSummary[]> {
-  let scope = "true";
-  let value: string[] = [];
-  if (user.role === "tenant") {
-    scope = "d.reporter_id=$1";
-    value = [user.id];
-  }
-  if (user.role === "owner") {
-    scope =
-      "d.status<>'created' AND (CASE WHEN i.damage_id IS NOT NULL THEN i.owner_id ELSE p.owner_id END)=$1";
-    value = [user.ownerId ?? ""];
-  }
-  if (propertyId !== undefined) {
-    value.push(propertyId);
-    scope = `(${scope}) AND d.property_id=$${value.length}`;
-  }
-  const { rows } = await getPool().query<DamageRow>(
-    `${selectDamage} WHERE ${scope} ORDER BY d.created_at DESC,d.id`,
-    value,
-  );
+  const rows = await cases.findDamages(getPool(), user.id, { propertyId });
   return rows.map((row) => publicReport(row, user));
 }
+
 export async function loadDamage(
   id: string,
   user: AppUser,
 ): Promise<DamageDetail> {
-  const client = await getPool().connect();
-  try {
-    await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
-    const { rows } = await client.query<DamageRow>(
-      `${selectDamage} WHERE d.id=$1`,
-      [id],
-    );
-    const row = rows[0];
-    if (!row || !canRead(user, row))
-      throw new RequestError("Schadensmeldung nicht gefunden.", 404);
-    const messages = await client.query<DamageMessage>(
-      `SELECT id,channel,author_name AS "authorName",author_role AS "authorRole",body,created_at::text AS "createdAt"
-      FROM hausportal.damage_messages WHERE damage_id=$1 AND ($2='admin' OR channel=$2) ORDER BY created_at,id`,
-      [id, user.role],
-    );
-    const events = await client.query<DamageDetail["events"][number]>(
-      'SELECT status,created_at::text AS "createdAt" FROM hausportal.damage_events WHERE damage_id=$1 ORDER BY id',
-      [id],
-    );
-    await client.query("COMMIT");
+  return transaction(async (client) => {
+    const row = await requireCase(client, id, user);
+    const messages = await cases.findMessages(client, id, user.id);
+    const events = await cases.findEvents(client, id, user.id);
+    const ownerAssignments = await cases.findOwnerHistory(client, id, user.id);
     return {
       report: publicReport(row, user),
-      messages: messages.rows,
-      events: events.rows,
+      messages,
+      events: events.map((event) => ({
+        ...event,
+        actorName: user.role === "admin" ? event.actorName : null,
+      })),
+      ownerAssignments,
     };
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
+  }, true);
 }
+
 export async function tenantLocation(user: AppUser) {
   if (user.role !== "tenant") return null;
-  const { rows } = await getPool().query<{
-    propertyId: string;
-    unitId: string | null;
-    location: string;
-  }>(
-    `SELECT p.id AS "propertyId",u.id AS "unitId",
-    concat_ws(' · ',p.name,p.street,concat(p.postal_code,' ',p.city),u.name) AS location
-    FROM hausportal.tenants t LEFT JOIN hausportal.units u ON u.id=t.unit_id
-    JOIN hausportal.properties p ON p.id=coalesce(u.property_id,t.property_id) WHERE t.id=$1`,
-    [user.tenantId],
-  );
-  return rows[0] ?? null;
+  return findTenantHome(getPool(), user.tenantId);
 }
+
 export async function createDamage(
   user: AppUser,
   input: { id: string; description: string; language: DamageLanguage },
 ) {
   if (user.role !== "tenant")
     throw new RequestError("Nur Mieter können Schäden melden.", 403);
-  const client = await getPool().connect();
-  try {
-    await client.query("BEGIN");
-    // Serialize with assignment changes, so the location is captured consistently.
-    await client.query(
-      "SELECT revision FROM hausportal.state WHERE id=1 FOR UPDATE",
-    );
-    const previous = await client.query(
-      "SELECT reporter_id,description FROM hausportal.damages WHERE id=$1",
-      [input.id],
-    );
-    if (previous.rows[0]) {
+  return transaction(async (client) => {
+    await lockApplicationState(client);
+    const previous = await cases.findReportIdentity(client, input.id);
+    if (previous) {
       if (
-        previous.rows[0].reporter_id !== user.id ||
-        previous.rows[0].description !== input.description
+        previous.reporter_id !== user.id ||
+        previous.description !== input.description
       )
         throw new RequestError("Diese Meldung wurde bereits verwendet.", 409);
-    } else {
-      const location = await client.query<{
-        propertyId: string;
-        unitId: string | null;
-        location: string;
-      }>(
-        `SELECT p.id AS "propertyId",u.id AS "unitId",
-        concat_ws(' · ',p.name,p.street,concat(p.postal_code,' ',p.city),u.name) AS location
-        FROM hausportal.tenants t LEFT JOIN hausportal.units u ON u.id=t.unit_id
-        JOIN hausportal.properties p ON p.id=coalesce(u.property_id,t.property_id) WHERE t.id=$1`,
-        [user.tenantId],
-      );
-      const place = location.rows[0];
-      if (!place)
-        throw new RequestError(
-          input.language === "en"
-            ? "Your apartment has no building assigned. Please contact property management."
-            : "Deiner Wohnung ist noch kein Gebäude zugeordnet. Bitte kontaktiere die Verwaltung.",
-          409,
-        );
-      await client.query(
-        `INSERT INTO hausportal.damages(id,reporter_id,tenant_id,property_id,unit_id,location,description,language)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [
-          input.id,
-          user.id,
-          user.tenantId,
-          place.propertyId,
-          place.unitId,
-          place.location,
-          input.description,
-          input.language,
-        ],
-      );
-      await client.query(
-        "INSERT INTO hausportal.damage_events(damage_id,status) VALUES($1,'created')",
-        [input.id],
-      );
+      return input.id;
     }
-    await client.query("COMMIT");
+    const place = await findTenantHome(client, user.tenantId);
+    if (!place)
+      throw new RequestError(
+        input.language === "en"
+          ? "Your apartment has no building assigned. Please contact property management."
+          : "Deiner Wohnung ist noch kein Gebäude zugeordnet. Bitte kontaktiere die Verwaltung.",
+        409,
+      );
+    await cases.insertDamage(client, user, input, place);
+    if (place.ownerId) {
+      const owner = await assignments.findOwner(client, place.ownerId);
+      if (owner)
+        await assignments.assignOwner(
+          client,
+          input.id,
+          owner,
+          user.id,
+          "report",
+        );
+    }
+    await cases.appendStatus(client, input.id, "created", user);
     return input.id;
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
+  });
 }
+
 export async function updateDamage(
   id: string,
   user: AppUser,
   input: DamageUpdate,
 ) {
-  if (user.role !== "admin") throw new RequestError("Keine Berechtigung.", 403);
-  const client = await getPool().connect();
-  try {
-    await client.query("BEGIN");
-    await client.query(
-      "SELECT revision FROM hausportal.state WHERE id=1 FOR UPDATE",
-    );
-    const report = await lockedReport(client, id, user);
+  requireAdministrator(user);
+  return transaction(async (client) => {
+    await lockApplicationState(client);
+    const report = await requireCase(client, id, user, true);
+    if (!report.canManage) throw new RequestError("Keine Berechtigung.", 403);
     if (report.version !== input.version)
       throw new RequestError(
         "Der Fall wurde inzwischen geändert. Bitte lade ihn neu.",
         409,
       );
+    if (input.action === "assign_owner") {
+      if (report.ownerId === input.ownerId) return;
+      if (report.invoiceNumber)
+        throw new RequestError(
+          "Der Fall ist bereits abgerechnet. Der Rechnungsempfänger kann hier nicht geändert werden.",
+          409,
+        );
+      const owner = input.ownerId
+        ? await assignments.findOwner(client, input.ownerId)
+        : null;
+      if (input.ownerId && !owner)
+        throw new RequestError("Eigentümer nicht gefunden.", 404);
+      await assignments.endOwnerAssignment(
+        client,
+        id,
+        user.id,
+        owner ? "reassigned" : "unassigned",
+      );
+      if (owner)
+        await assignments.assignOwner(client, id, owner, user.id, "manual");
+      await cases.saveDamage(client, id, report);
+      return;
+    }
     let status = report.status;
     let assigneeId = report.assigneeId;
     if (input.action === "claim") {
@@ -259,22 +169,20 @@ export async function updateDamage(
         status = input.status;
       }
     }
-    if (status === "invoiced" && report.status !== "invoiced") {
+    if (
+      input.action === "update" &&
+      status === "invoiced" &&
+      report.status !== "invoiced"
+    ) {
       if (!input.invoice)
         throw new RequestError("Bitte ergänze die Rechnungsdaten.", 400);
-      const recipient = await client.query(
-        "SELECT o.id,o.name FROM hausportal.damages d JOIN hausportal.properties p ON p.id=d.property_id JOIN hausportal.owners o ON o.id=p.owner_id WHERE d.id=$1 FOR SHARE OF p,o",
-        [id],
-      );
-      if (!recipient.rows[0])
-        throw new RequestError(
-          "Dem Gebäude ist kein Eigentümer zugeordnet.",
-          409,
-        );
-      const { rows: dates } = await client.query(
-        "SELECT (now() AT TIME ZONE 'Europe/Berlin')::date::text AS today, nextval('hausportal.damage_invoice_number')::text AS serial",
-      );
-      if (input.invoice.serviceDate > dates[0].today)
+      const recipient = report.ownerId
+        ? await assignments.findOwner(client, report.ownerId)
+        : null;
+      if (!recipient)
+        throw new RequestError("Dem Fall ist kein Eigentümer zugeordnet.", 409);
+      const dates = await cases.nextInvoiceNumber(client);
+      if (input.invoice.serviceDate > dates.today)
         throw new RequestError(
           "Das Leistungsdatum darf nicht in der Zukunft liegen.",
           400,
@@ -282,99 +190,58 @@ export async function updateDamage(
       const invoice: InvoiceSnapshot = {
         ...input.invoice,
         ...invoiceTotals(input.invoice.netCents, input.invoice.taxBasisPoints),
-        number: `HP-${dates[0].today.slice(0, 4)}-${dates[0].serial.padStart(6, "0")}`,
-        issuedDate: dates[0].today,
-        recipientName: recipient.rows[0].name,
+        number: `HP-${dates.today.slice(0, 4)}-${dates.serial.padStart(6, "0")}`,
+        issuedDate: dates.today,
+        recipientName: recipient.name,
         location: report.location,
       };
-      const pdf = await renderDamageInvoice(invoice);
-      await client.query(
-        "INSERT INTO hausportal.damage_invoices(damage_id,number,owner_id,details,pdf) VALUES($1,$2,$3,$4,$5)",
-        [id, invoice.number, recipient.rows[0].id, invoice, pdf],
+      await cases.insertInvoice(
+        client,
+        id,
+        recipient.id,
+        invoice,
+        await renderDamageInvoice(invoice),
       );
     }
-    await client.query(
-      `UPDATE hausportal.damages SET status=$2,assignee_id=$3,service_ordered=$4,version=version+1,updated_at=now() WHERE id=$1`,
-      [id, status, assigneeId, input.serviceOrdered ?? report.serviceOrdered],
-    );
+    await cases.saveDamage(client, id, {
+      status,
+      assigneeId,
+      serviceOrdered:
+        input.action === "update"
+          ? (input.serviceOrdered ?? report.serviceOrdered)
+          : report.serviceOrdered,
+    });
     if (status !== report.status)
-      await client.query(
-        "INSERT INTO hausportal.damage_events(damage_id,status) VALUES($1,$2)",
-        [id, status],
-      );
-    await client.query("COMMIT");
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
+      await cases.appendStatus(client, id, status, user);
+  });
 }
+
 export async function addDamageMessage(
   id: string,
   user: AppUser,
   input: { id: string; channel: MessageChannel; body: string },
 ) {
-  const client = await getPool().connect();
-  try {
-    await client.query("BEGIN");
-    const report = await lockedReport(client, id, user);
-    if (user.role !== "admin" && input.channel !== user.role)
-      throw new RequestError("Keine Berechtigung.", 403);
-    if (
-      input.channel === "owner" &&
-      report.status !== "invoiced" &&
-      report.status !== "paid"
-    )
-      throw new RequestError(
-        "Rückfragen zur Rechnung sind nach der Rechnungsstellung möglich.",
-        409,
-      );
-    const existing = await client.query(
-      "SELECT author_id,damage_id,channel,body FROM hausportal.damage_messages WHERE id=$1",
-      [input.id],
-    );
-    if (existing.rows[0]) {
-      const message = existing.rows[0];
+  return transaction(async (client) => {
+    await lockApplicationState(client);
+    const report = await requireCase(client, id, user, true);
+    assertMessageChannel(report.messageChannels, input.channel, report.status);
+    const previous = await cases.findMessageIdentity(client, input.id);
+    if (previous) {
       if (
-        message.author_id !== user.id ||
-        message.damage_id !== id ||
-        message.channel !== input.channel ||
-        message.body !== input.body
+        previous.author_id !== user.id ||
+        previous.damage_id !== id ||
+        previous.channel !== input.channel ||
+        previous.body !== input.body
       )
         throw new RequestError("Diese Nachricht wurde bereits verwendet.", 409);
-    } else {
-      await client.query(
-        `INSERT INTO hausportal.damage_messages(id,damage_id,channel,author_id,author_name,author_role,body) VALUES($1,$2,$3,$4,$5,$6,$7)`,
-        [
-          input.id,
-          id,
-          input.channel,
-          user.id,
-          user.name,
-          user.role,
-          input.body,
-        ],
-      );
-    }
-    await client.query("COMMIT");
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
+    } else await cases.insertMessage(client, id, user, input);
+  });
 }
+
 export async function loadDamageInvoice(id: string, user: AppUser) {
   if (user.role === "tenant")
     throw new RequestError("Keine Berechtigung.", 403);
-  // Use one statement for access and content so ownership checks cannot race a download.
-  const { rows } = await getPool().query<{ number: string; pdf: Buffer }>(
-    `SELECT i.number,i.pdf FROM hausportal.damage_invoices i
-    JOIN hausportal.damages d ON d.id=i.damage_id
-    WHERE d.id=$1 AND d.status IN ('invoiced','paid') AND ($2='admin' OR i.owner_id=$3)`,
-    [id, user.role, user.ownerId],
-  );
-  if (!rows[0]) throw new RequestError("Rechnung nicht gefunden.", 404);
-  return rows[0];
+  const invoice = await cases.findInvoice(getPool(), id, user.id);
+  if (!invoice) throw new RequestError("Rechnung nicht gefunden.", 404);
+  return invoice;
 }

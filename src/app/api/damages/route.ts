@@ -6,7 +6,7 @@ import {
 } from "@/lib/server/damage-http";
 import { createDamage, listDamages } from "@/lib/server/damages";
 import { newDamageRequest } from "@/lib/server/damage-validation";
-import { rateLimit } from "@/lib/server/invitations";
+import { rateLimit } from "@/lib/server/rate-limit";
 export async function GET() {
   try {
     return Response.json(

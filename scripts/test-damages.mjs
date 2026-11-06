@@ -433,6 +433,314 @@ export async function checkDamages({
     "Eigentümer fragt zur Rechnung nach; Mieterchat bleibt privat; Bezahlung verändert die ausgestellte PDF nicht",
   );
 
+  // Cases have explicit assignments; building ownership never silently grants access.
+  const independentId = randomUUID();
+  const independentRoute = `/api/damages/${independentId}`;
+  assert.equal(
+    (
+      await tenant.request("/api/damages", {
+        method: "POST",
+        body: {
+          id: independentId,
+          description: "Eigenständiger Fall " + run,
+          language: "de",
+        },
+      })
+    ).status,
+    200,
+  );
+  let independent = (await admin.request(independentRoute)).json.report;
+  assert.equal(
+    (
+      await admin.request(independentRoute, {
+        method: "PATCH",
+        body: { action: "claim", version: independent.version },
+      })
+    ).status,
+    200,
+  );
+  independent = (await admin.request(independentRoute)).json.report;
+  assert.equal(independent.ownerId, ids.owner);
+  assert.equal((await owner.request(independentRoute)).status, 200);
+
+  // A failed aggregate write must also roll back its case-assignment changes.
+  const invalidMaster = (await admin.request("/api/data")).json;
+  invalidMaster.data.properties.find((p) => p.id === ids.property).ownerId =
+    ids.otherOwner;
+  invalidMaster.data.owners.push({
+    id: `duplicate-${run}`,
+    name: "Duplikat",
+    email: invalidMaster.data.owners.find((o) => o.id === ids.owner).email,
+    phone: "",
+  });
+  assert.equal(
+    (await admin.request("/api/data", { method: "PUT", body: invalidMaster }))
+      .status,
+    409,
+  );
+  assert.equal(
+    (await admin.request(independentRoute)).json.report.ownerId,
+    ids.owner,
+  );
+  assert.equal(
+    (await admin.request(independentRoute)).json.ownerAssignments.length,
+    1,
+  );
+  assert.equal(
+    (await admin.request("/api/data")).json.revision,
+    invalidMaster.revision,
+  );
+  pass(
+    "Fehler beim Stammdatenschreiben rollen Fallzuordnung und Revision vollständig zurück",
+  );
+
+  const master = (await admin.request("/api/data")).json;
+  master.data.properties.find((p) => p.id === ids.property).ownerId =
+    ids.otherOwner;
+  assert.equal(
+    (await admin.request("/api/data", { method: "PUT", body: master })).status,
+    200,
+  );
+  const detached = (await admin.request(independentRoute)).json;
+  assert.equal(detached.report.ownerId, null);
+  assert.equal(
+    detached.ownerAssignments[0].endReason,
+    "building_owner_changed",
+  );
+  assert.equal((await owner.request(independentRoute)).status, 404);
+  assert.equal((await otherOwner.request(independentRoute)).status, 404);
+  assert.equal((await tenant.request(independentRoute)).status, 200);
+  assert.equal(
+    (await otherOwner.request("/api/damages")).json.reports.some(
+      (r) => r.id === independentId,
+    ),
+    false,
+  );
+  assert.equal((await otherOwner.request(route)).status, 404);
+  assert.equal((await otherOwner.request(`${route}/invoice`)).status, 404);
+  assert.equal((await owner.request(route)).status, 200);
+  assert.deepEqual((await owner.request(`${route}/invoice`)).bytes, pdf.bytes);
+  pass(
+    "Eigentümerwechsel lässt offene Fälle unzugeordnet; alter Rechnungsfall und PDF bleiben vollständig beim alten Empfänger",
+  );
+
+  assert.equal(
+    (
+      await otherOwner.request(independentRoute, {
+        method: "PATCH",
+        body: {
+          action: "assign_owner",
+          version: detached.report.version,
+          ownerId: ids.otherOwner,
+        },
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await admin.request(independentRoute, {
+        method: "PATCH",
+        body: {
+          action: "assign_owner",
+          version: detached.report.version,
+          ownerId: ids.otherOwner,
+        },
+      })
+    ).status,
+    200,
+  );
+  assert.equal((await otherOwner.request(independentRoute)).status, 200);
+  assert.deepEqual(
+    (await otherOwner.request(independentRoute)).json.ownerAssignments,
+    [],
+  );
+  assert.equal((await owner.request(independentRoute)).status, 404);
+  assert.equal(
+    (
+      await admin.request(independentRoute, {
+        method: "PATCH",
+        body: {
+          action: "assign_owner",
+          version: detached.report.version,
+          ownerId: ids.owner,
+        },
+      })
+    ).status,
+    409,
+  );
+  let fixed = (await admin.request(route)).json.report;
+  assert.equal(
+    (
+      await admin.request(route, {
+        method: "PATCH",
+        body: {
+          action: "assign_owner",
+          version: fixed.version,
+          ownerId: ids.otherOwner,
+        },
+      })
+    ).status,
+    409,
+  );
+  const assignmentPage = await admin.request(`/schaeden/${independentId}`);
+  assert.ok(assignmentPage.text.includes("Eigentümer zuordnen"));
+  assert.ok(assignmentPage.text.includes("Eigentümerhistorie"));
+  pass(
+    "Nur die Verwaltung ordnet Fälle zu; Zuordnung und Rechnungsschutz gelten für Liste, Detail und PDF",
+  );
+
+  // Detach without deleting the case, then assign a contact who has no login yet.
+  independent = (await admin.request(independentRoute)).json.report;
+  assert.equal(
+    (
+      await admin.request(independentRoute, {
+        method: "PATCH",
+        body: {
+          action: "assign_owner",
+          version: independent.version,
+          ownerId: null,
+        },
+      })
+    ).status,
+    200,
+  );
+  assert.equal((await otherOwner.request(independentRoute)).status, 404);
+  const formerOwnerId = `former-owner-${run}`;
+  const formerName = `Ehemaliger Eigentümer ${run}`;
+  const withContact = (await admin.request("/api/data")).json;
+  withContact.data.owners.push({
+    id: formerOwnerId,
+    name: formerName,
+    email: `former-${run}@example.com`,
+    phone: "",
+  });
+  assert.equal(
+    (await admin.request("/api/data", { method: "PUT", body: withContact }))
+      .status,
+    200,
+  );
+  independent = (await admin.request(independentRoute)).json.report;
+  assert.equal(
+    (
+      await admin.request(independentRoute, {
+        method: "PATCH",
+        body: {
+          action: "assign_owner",
+          version: independent.version,
+          ownerId: formerOwnerId,
+        },
+      })
+    ).status,
+    200,
+  );
+  independent = (await admin.request(independentRoute)).json.report;
+  assert.equal(
+    (
+      await admin.request(independentRoute, {
+        method: "PATCH",
+        body: {
+          action: "update",
+          version: independent.version,
+          status: "invoiced",
+          invoice,
+        },
+      })
+    ).status,
+    200,
+  );
+  const lateOwner = new BrowserSession();
+  const lateToken = await invitation(
+    `former-${run}@example.com`,
+    formerName,
+    "owner",
+    formerOwnerId,
+  );
+  assert.equal(
+    (
+      await lateOwner.request("/api/invitations/accept", {
+        method: "POST",
+        body: { token: lateToken, password: `Isolated-${randomUUID()}` },
+      })
+    ).status,
+    200,
+  );
+  assert.equal((await lateOwner.request(independentRoute)).status, 200);
+  assert.equal(
+    (await lateOwner.request(`${independentRoute}/invoice`)).status,
+    200,
+  );
+  pass(
+    "Später aktivierter Eigentümerzugang erhält Zugriff aus der bestehenden Fallzuordnung ohne doppelte Empfängerliste",
+  );
+  const historicalPdf = await admin.request(`${independentRoute}/invoice`);
+  assert.equal(historicalPdf.status, 200);
+  const withoutContact = (await admin.request("/api/data")).json;
+  withoutContact.data.owners = withoutContact.data.owners.filter(
+    (o) => o.id !== formerOwnerId,
+  );
+  assert.equal(
+    (await admin.request("/api/data", { method: "PUT", body: withoutContact }))
+      .status,
+    200,
+  );
+  const preserved = (await admin.request(independentRoute)).json;
+  assert.equal(preserved.report.ownerId, null);
+  assert.equal((await lateOwner.request(independentRoute)).status, 401);
+  assert.equal(
+    (await lateOwner.request(`${independentRoute}/invoice`)).status,
+    401,
+  );
+  assert.equal(preserved.report.status, "invoiced");
+  assert.equal(preserved.ownerAssignments.at(-1).ownerName, formerName);
+  assert.equal(preserved.ownerAssignments.at(-1).ownerId, null);
+  assert.equal(preserved.ownerAssignments.at(-1).endReason, "owner_removed");
+  assert.deepEqual(
+    (await admin.request(`${independentRoute}/invoice`)).bytes,
+    historicalPdf.bytes,
+  );
+  assert.equal((await otherOwner.request(independentRoute)).status, 404);
+  assert.equal((await owner.request(independentRoute)).status, 404);
+  pass(
+    "Entfernter Eigentümer bleibt namentlich in der Historie; Fall und ausgestellte PDF bleiben erhalten",
+  );
+
+  // Restore the building fixture for the remaining registration tests.
+  const restore = (await admin.request("/api/data")).json;
+  restore.data.properties.find((p) => p.id === ids.property).ownerId =
+    ids.owner;
+  assert.equal(
+    (await admin.request("/api/data", { method: "PUT", body: restore })).status,
+    200,
+  );
+
+  await client.query("BEGIN");
+  try {
+    await client.query("SAVEPOINT invalid_profile");
+    await assert.rejects(
+      client.query(
+        "INSERT INTO hausportal.users(id,email,name,role,owner_id) VALUES($1,$2,'Ungültig','admin',$3)",
+        [`invalid-${run}`, `invalid-${run}@example.com`, ids.owner],
+      ),
+      { code: "23514" },
+    );
+    await client.query("ROLLBACK TO SAVEPOINT invalid_profile");
+    await client.query("SAVEPOINT conflicting_assignment");
+    await assert.rejects(
+      client.query(
+        "INSERT INTO hausportal.damage_owner_assignments(damage_id,owner_id,owner_name,source) VALUES($1,$2,'Doppelt','manual')",
+        [reportId, ids.otherOwner],
+      ),
+      { code: "23505" },
+    );
+    await client.query("ROLLBACK TO SAVEPOINT conflicting_assignment");
+  } finally {
+    await client.query("ROLLBACK");
+  }
+  pass(
+    "Datenbank verhindert widersprüchliche Nutzerprofile und doppelte aktuelle Fallzuordnungen",
+  );
+
   const newPage = await tenant.request("/portal/schaeden/neu");
   assert.equal(newPage.status, 200);
   assert.ok(newPage.text.includes('name="description"'));

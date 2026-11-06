@@ -8,7 +8,11 @@ import {
   type MessageChannel,
   type BuildingDamageFilter,
 } from "@/lib/damage";
-import { DamageAdminForm, DamageMessageForm } from "./damage-forms";
+import {
+  DamageAdminForm,
+  DamageMessageForm,
+  DamageOwnerForm,
+} from "./damage-forms";
 function date(value: string, language: DamageLanguage) {
   return new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", {
     dateStyle: "medium",
@@ -62,7 +66,8 @@ export function DamageList({
               {admin && (
                 <span className="cell-secondary">
                   {report.reporterName} ·{" "}
-                  {report.assigneeName ?? "Nicht übernommen"}
+                  {report.assigneeName ?? "Nicht übernommen"} ·{" "}
+                  {report.ownerName ?? "Ohne Eigentümer"}
                 </span>
               )}
             </>
@@ -95,12 +100,14 @@ export function DamageView({
   language,
   created = false,
   backHref,
+  owners = [],
 }: {
   detail: DamageDetail;
   user: AppUser;
   language: DamageLanguage;
   created?: boolean;
   backHref?: string;
+  owners?: { id: string; name: string }[];
 }) {
   const t = damageText[language];
   const { report, messages, events } = detail;
@@ -206,6 +213,13 @@ export function DamageView({
         </div>
         <div className="damage-side">
           {admin && (
+            <DamageOwnerForm
+              key={`owner-${report.version}`}
+              report={report}
+              owners={owners}
+            />
+          )}
+          {admin && (
             <DamageAdminForm
               key={report.version}
               report={report}
@@ -224,10 +238,53 @@ export function DamageView({
                   <time dateTime={event.createdAt}>
                     {date(event.createdAt, language)}
                   </time>
+                  {admin && event.actorName && (
+                    <span className="cell-secondary">{event.actorName}</span>
+                  )}
                 </li>
               ))}
             </ol>
           </section>
+          {admin && detail.ownerAssignments.length > 0 && (
+            <section className="damage-panel">
+              <h2>Eigentümerhistorie</h2>
+              <ol className="damage-timeline">
+                {detail.ownerAssignments.map((assignment) => (
+                  <li key={assignment.id}>
+                    <strong>{assignment.ownerName}</strong>
+                    <span className="cell-secondary">
+                      {assignment.endedAt
+                        ? "Ehemaliger Eigentümer des Falls"
+                        : "Aktuell zugeordnet"}
+                    </span>
+                    <time dateTime={assignment.assignedAt}>
+                      {date(assignment.assignedAt, language)}
+                    </time>
+                    {assignment.endedAt && (
+                      <>
+                        <time dateTime={assignment.endedAt}>
+                          {date(assignment.endedAt, language)}
+                        </time>
+                        <span className="cell-secondary">
+                          {
+                            (
+                              {
+                                reassigned: "Neu zugeordnet",
+                                unassigned: "Zuordnung aufgehoben",
+                                building_owner_changed:
+                                  "Gebäudeeigentümer geändert",
+                                owner_removed: "Eigentümer entfernt",
+                              } as const
+                            )[assignment.endReason!]
+                          }
+                        </span>
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
         </div>
       </div>
     </>

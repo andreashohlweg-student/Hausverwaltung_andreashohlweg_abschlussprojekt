@@ -13,9 +13,12 @@ import { saveRequest } from "@/lib/server/validation";
 
 export async function GET() {
   try {
-    await apiAdmin();
+    const user = await apiAdmin();
     return Response.json(
-      { ...(await loadDatabase()), accounts: await loadAccountStatuses() },
+      {
+        ...(await loadDatabase(user)),
+        accounts: await loadAccountStatuses(user),
+      },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
@@ -25,13 +28,17 @@ export async function GET() {
 export async function PUT(request: Request) {
   try {
     assertSameOrigin(request);
-    await apiAdmin();
+    const user = await apiAdmin();
     if (Number(request.headers.get("content-length") || 0) > 2_000_000)
       throw new RequestError("Zu viele Daten.", 413);
     const parsed = saveRequest.safeParse(await request.json());
     if (!parsed.success)
       throw new RequestError("Die übermittelten Daten sind ungültig.", 400);
-    const revision = await saveDatabase(parsed.data.data, parsed.data.revision);
+    const revision = await saveDatabase(
+      parsed.data.data,
+      parsed.data.revision,
+      user,
+    );
     return Response.json({ revision });
   } catch (error) {
     return errorResponse(error);

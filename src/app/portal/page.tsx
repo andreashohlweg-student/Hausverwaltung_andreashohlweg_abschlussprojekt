@@ -1,13 +1,15 @@
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/server/access";
-import { getPool } from "@/lib/server/db";
 import { roleLabels } from "@/lib/account";
 import Link from "next/link";
 import { listDamages } from "@/lib/server/damages";
 import { damageLanguage } from "@/lib/server/damage-language";
 import { damageText } from "@/lib/damage";
 import { DamageList } from "@/components/damage-view";
-import { listOwnerProperties } from "@/lib/server/owner-properties";
+import {
+  listOwnerProperties,
+  loadTenantHome,
+} from "@/lib/server/owner-properties";
 import { OwnerPropertyCard } from "@/components/owner-property-card";
 import { DamageRefresh } from "@/components/damage-forms";
 export const metadata = { title: "Mein Zugang" };
@@ -20,19 +22,8 @@ export default async function PortalPage() {
   const reports = await listDamages(user);
   const ownerProperties =
     user.role === "owner" ? await listOwnerProperties(user) : [];
-  const properties =
-    user.role === "owner"
-      ? []
-      : (
-          await getPool().query(
-            `SELECT p.id,p.name,p.street,p.postal_code,p.city,u.name AS unit_name
-            FROM hausportal.tenants t
-            LEFT JOIN hausportal.units u ON t.unit_id=u.id
-            JOIN hausportal.properties p ON p.id=coalesce(u.property_id,t.property_id)
-            WHERE t.id=$1`,
-            [user.tenantId],
-          )
-        ).rows;
+  const home = await loadTenantHome(user);
+  const properties = home ? [home] : [];
   return (
     <>
       <DamageRefresh />
@@ -86,15 +77,15 @@ export default async function PortalPage() {
           )
         ) : properties.length ? (
           properties.map((property) => (
-            <article className="portal-property" key={property.id}>
+            <article className="portal-property" key={property.propertyId}>
               <h2>{property.name}</h2>
               <p>
                 {property.street}
                 <br />
-                {property.postal_code} {property.city}
+                {property.postalCode} {property.city}
               </p>
               <p>
-                {property.unit_name ??
+                {property.unitName ??
                   (language === "de"
                     ? "Keine Wohnung zugeordnet."
                     : "No apartment assigned.")}

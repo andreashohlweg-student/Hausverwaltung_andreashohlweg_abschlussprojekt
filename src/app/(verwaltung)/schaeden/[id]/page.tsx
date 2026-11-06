@@ -4,6 +4,7 @@ import { damageId } from "@/lib/server/damage-http";
 import { loadDamage } from "@/lib/server/damages";
 import { DamageView } from "@/components/damage-view";
 import { DamageRefresh } from "@/components/damage-forms";
+import { ownerOptions } from "@/lib/server/records";
 export const metadata = { title: "Schadensmeldung" };
 export default async function DamagePage({
   params,
@@ -13,10 +14,11 @@ export default async function DamagePage({
   const user = await requireAdmin();
   try {
     const detail = await loadDamage(damageId((await params).id), user);
+    const owners = await ownerOptions(user);
     return (
       <>
         <DamageRefresh />
-        <DamageView detail={detail} user={user} language="de" />
+        <DamageView detail={detail} user={user} language="de" owners={owners} />
       </>
     );
   } catch (error) {
