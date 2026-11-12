@@ -370,24 +370,25 @@ export async function checkDamages({
         body: ownerMessage,
       })
     ).status,
-    200,
+    409,
   );
+  const invoiceMessage = {
+    id: randomUUID(),
+    channel: "owner",
+    body: "Die Position umfasst das Material.",
+  };
   assert.equal(
     (
       await admin.request(`${route}/messages`, {
         method: "POST",
-        body: {
-          id: randomUUID(),
-          channel: "owner",
-          body: "Die Position umfasst das Material.",
-        },
+        body: invoiceMessage,
       })
     ).status,
     200,
   );
   assert.ok(
-    (await admin.request(route)).json.messages.some(
-      (m) => m.id === ownerMessage.id,
+    (await owner.request(route)).json.messages.some(
+      (m) => m.id === invoiceMessage.id,
     ),
   );
   assert.ok(
@@ -398,6 +399,8 @@ export async function checkDamages({
   const ownerView = await owner.request(`/portal/schaeden/${reportId}`);
   assert.equal(ownerView.status, 200);
   assert.ok(!ownerView.text.includes(tenantMessage.body));
+  assert.ok(ownerView.text.includes(invoiceMessage.body));
+  assert.ok(!ownerView.text.includes('name="body"'));
   report = (await admin.request(route)).json.report;
   assert.equal(
     (
@@ -409,6 +412,15 @@ export async function checkDamages({
     200,
   );
   assert.equal((await owner.request(route)).json.report.status, "paid");
+  assert.equal(
+    (
+      await owner.request(`${route}/messages`, {
+        method: "POST",
+        body: ownerMessage,
+      })
+    ).status,
+    409,
+  );
   assert.ok(
     (await owner.request(buildingRoute + "?filter=invoice")).text.includes(
       description,
@@ -430,7 +442,7 @@ export async function checkDamages({
     409,
   );
   pass(
-    "Eigentümer fragt zur Rechnung nach; Mieterchat bleibt privat; Bezahlung verändert die ausgestellte PDF nicht",
+    "Eigentümer liest Nachrichten und PDF zu abgeschlossenen Fällen ohne Schreibzugriff",
   );
 
   // Cases have explicit assignments; building ownership never silently grants access.

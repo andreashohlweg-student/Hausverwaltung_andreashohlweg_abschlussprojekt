@@ -224,7 +224,12 @@ export async function addDamageMessage(
   return transaction(async (client) => {
     await lockApplicationState(client);
     const report = await requireCase(client, id, user, true);
-    assertMessageChannel(report.messageChannels, input.channel, report.status);
+    assertMessageChannel(
+      report.messageChannels,
+      input.channel,
+      report.status,
+      user.role,
+    );
     const previous = await cases.findMessageIdentity(client, input.id);
     if (previous) {
       if (

@@ -1730,8 +1730,3 @@ tbody tr:hover {
   margin-left: 8px;
   font-size: 11px;
 }
-.damage-building-link {
-  text-decoration: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 3px;
-}

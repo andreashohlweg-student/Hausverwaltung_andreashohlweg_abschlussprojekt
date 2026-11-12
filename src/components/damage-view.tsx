@@ -83,6 +83,12 @@ export function DamageView({
   const t = damageText[language];
   const { report, messages, events } = detail;
   const admin = user.role === "admin";
+  const owner = user.role === "owner";
+  const backLabel = owner
+    ? backHref
+      ? t.backToBuildingReports
+      : t.backToDashboard
+    : t.back;
   const invoiceVisible = !!report.invoiceNumber && user.role !== "tenant";
   const ownerConversation =
     report.status === "invoiced" || report.status === "paid";
@@ -92,7 +98,7 @@ export function DamageView({
       : ["tenant"]
     : user.role === "tenant"
       ? ["tenant"]
-      : ownerConversation
+      : messages.some((message) => message.channel === "owner")
         ? ["owner"]
         : [];
   return (
@@ -101,7 +107,7 @@ export function DamageView({
         className="back-link"
         href={backHref ?? (admin ? "/schaeden" : "/portal")}
       >
-        {t.back}
+        {backLabel}
       </Link>
       <div className="page-heading">
         <h1>{language === "de" ? "Schadensmeldung" : "Reported problem"}</h1>
@@ -117,21 +123,7 @@ export function DamageView({
             <span className={`badge damage-status-${report.status}`}>
               {t.statuses[report.status]}
             </span>
-            <h2>
-              {user.role === "owner" && report.propertyId ? (
-                <Link
-                  className="damage-building-link"
-                  href={
-                    backHref ??
-                    `/portal/gebaeude/${encodeURIComponent(report.propertyId)}`
-                  }
-                >
-                  {report.location}
-                </Link>
-              ) : (
-                report.location
-              )}
-            </h2>
+            <h2>{report.location}</h2>
             <p className="damage-description" dir="auto">
               {report.description}
             </p>
@@ -177,11 +169,13 @@ export function DamageView({
                     </article>
                   ))}
               </div>
-              <DamageMessageForm
-                id={report.id}
-                channel={channel}
-                language={language}
-              />
+              {!owner && (
+                <DamageMessageForm
+                  id={report.id}
+                  channel={channel}
+                  language={language}
+                />
+              )}
             </section>
           ))}
         </div>

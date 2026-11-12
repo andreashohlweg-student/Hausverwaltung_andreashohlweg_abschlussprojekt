@@ -8,12 +8,18 @@ export function assertMessageChannel(
   channels: MessageChannel[],
   channel: MessageChannel,
   status: DamageStatus,
+  role: AppUser["role"],
 ) {
   if (!channels.includes(channel))
     throw new RequestError("Keine Berechtigung.", 403);
   if (channel === "owner" && status !== "invoiced" && status !== "paid")
     throw new RequestError(
-      "Rückfragen zur Rechnung sind nach der Rechnungsstellung möglich.",
+      "Für diesen Fall liegt noch keine Rechnung vor.",
+      409,
+    );
+  if (channel === "owner" && role === "owner")
+    throw new RequestError(
+      "Der Fall ist abgeschlossen. Du kannst keine Nachricht mehr senden.",
       409,
     );
 }
