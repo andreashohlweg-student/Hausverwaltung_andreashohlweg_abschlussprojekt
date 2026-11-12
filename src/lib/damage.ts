@@ -28,6 +28,7 @@ export interface DamageSummary {
 export interface DamageMessage {
   id: string;
   channel: MessageChannel;
+  ownerAssignmentId: string | null;
   authorName: string;
   authorRole: "admin" | "owner" | "tenant";
   body: string;
@@ -36,6 +37,8 @@ export interface DamageMessage {
 export interface DamageDetail {
   report: DamageSummary;
   messages: DamageMessage[];
+  writableMessageChannels: MessageChannel[];
+  ownerAssignmentId: string | null;
   events: {
     status: DamageStatus;
     createdAt: string;

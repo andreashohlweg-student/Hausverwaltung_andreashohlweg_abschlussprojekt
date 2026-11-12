@@ -1,25 +1,34 @@
 import "server-only";
 import type { AppUser } from "@/lib/account";
-import type { DamageSummary, DamageStatus, MessageChannel } from "@/lib/damage";
+import type { DamageSummary, MessageChannel } from "@/lib/damage";
 import type { DamageRow } from "../repositories/damages";
 import { RequestError } from "../errors";
 
-export function assertMessageChannel(
-  channels: MessageChannel[],
-  channel: MessageChannel,
-  status: DamageStatus,
+export function writableMessageChannels(
+  report: DamageRow,
   role: AppUser["role"],
 ) {
-  if (!channels.includes(channel))
+  return report.messageChannels.filter(
+    (channel) =>
+      channel === "tenant" ||
+      (report.ownerAssignmentId !== null &&
+        (report.status === "in_progress" ||
+          (role === "admin" && report.status !== "created"))),
+  );
+}
+
+export function assertMessageChannel(
+  report: DamageRow,
+  channel: MessageChannel,
+  role: AppUser["role"],
+) {
+  if (!report.messageChannels.includes(channel))
     throw new RequestError("Keine Berechtigung.", 403);
-  if (channel === "owner" && status !== "invoiced" && status !== "paid")
+  if (!writableMessageChannels(report, role).includes(channel))
     throw new RequestError(
-      "Für diesen Fall liegt noch keine Rechnung vor.",
-      409,
-    );
-  if (channel === "owner" && role === "owner")
-    throw new RequestError(
-      "Der Fall ist abgeschlossen. Du kannst keine Nachricht mehr senden.",
+      role === "owner"
+        ? "Der Fall ist abgeschlossen. Du kannst keine Nachricht mehr senden."
+        : "Für diesen Fall sind derzeit keine Nachrichten an den Eigentümer möglich.",
       409,
     );
 }
@@ -28,6 +37,7 @@ export function publicReport(row: DamageRow, user: AppUser): DamageSummary {
   const {
     reporterId: _reporter,
     currentOwnerId,
+    ownerAssignmentId: _assignment,
     messageChannels: _channels,
     canManage: _manage,
     canReadInvoice: _invoice,

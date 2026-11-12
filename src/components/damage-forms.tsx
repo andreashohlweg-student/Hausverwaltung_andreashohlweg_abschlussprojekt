@@ -125,10 +125,12 @@ export function DamageMessageForm({
   id,
   channel,
   language,
+  ownerAssignmentId,
 }: {
   id: string;
   channel: MessageChannel;
   language: DamageLanguage;
+  ownerAssignmentId?: string;
 }) {
   const t = damageText[language];
   const router = useRouter();
@@ -151,7 +153,7 @@ export function DamageMessageForm({
       await sendRequest(
         `/api/damages/${id}/messages`,
         "POST",
-        { ...request.current, channel },
+        { ...request.current, channel, ownerAssignmentId },
         t.error,
       );
       form.reset();

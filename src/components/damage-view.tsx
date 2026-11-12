@@ -4,6 +4,7 @@ import {
   damageText,
   type DamageDetail,
   type DamageLanguage,
+  type DamageMessage,
   type DamageSummary,
   type MessageChannel,
   type BuildingDamageFilter,
@@ -19,6 +20,39 @@ function date(value: string, language: DamageLanguage) {
     timeStyle: "short",
     timeZone: "Europe/Berlin",
   }).format(new Date(value));
+}
+
+function DamageMessageHistory({
+  messages,
+  language,
+  role,
+}: {
+  messages: DamageMessage[];
+  language: DamageLanguage;
+  role: AppUser["role"];
+}) {
+  return (
+    <div className="damage-messages" aria-live="polite">
+      {messages.map((message) => (
+        <article
+          className={`damage-message ${message.authorRole === role ? "own-message" : ""}`}
+          key={message.id}
+        >
+          <div>
+            <strong>
+              {message.authorRole === "admin"
+                ? damageText[language].administration
+                : message.authorName}
+            </strong>
+            <time dateTime={message.createdAt}>
+              {date(message.createdAt, language)}
+            </time>
+          </div>
+          <p dir="auto">{message.body}</p>
+        </article>
+      ))}
+    </div>
+  );
 }
 export function DamageList({
   reports,
@@ -81,7 +115,13 @@ export function DamageView({
   owners?: { id: string; name: string }[];
 }) {
   const t = damageText[language];
-  const { report, messages, events } = detail;
+  const {
+    report,
+    messages,
+    events,
+    ownerAssignmentId,
+    writableMessageChannels,
+  } = detail;
   const admin = user.role === "admin";
   const owner = user.role === "owner";
   const backLabel = owner
@@ -90,17 +130,21 @@ export function DamageView({
       : t.backToDashboard
     : t.back;
   const invoiceVisible = !!report.invoiceNumber && user.role !== "tenant";
-  const ownerConversation =
-    report.status === "invoiced" || report.status === "paid";
-  const channels: MessageChannel[] = admin
-    ? ownerConversation
-      ? ["tenant", "owner"]
-      : ["tenant"]
-    : user.role === "tenant"
-      ? ["tenant"]
-      : messages.some((message) => message.channel === "owner")
-        ? ["owner"]
-        : [];
+  const channels: MessageChannel[] = ["tenant", "owner"];
+  const ownerArchive = admin
+    ? messages.filter(
+        (message) =>
+          message.channel === "owner" &&
+          (message.ownerAssignmentId === null ||
+            message.ownerAssignmentId !== ownerAssignmentId),
+      )
+    : [];
+  const archivedAssignments = [
+    ...detail.ownerAssignments
+      .filter((assignment) => assignment.endedAt)
+      .map((assignment) => ({ id: assignment.id, name: assignment.ownerName })),
+    { id: null, name: "Frühere Nachrichten ohne Zuordnung" },
+  ];
   return (
     <>
       <Link
@@ -138,46 +182,59 @@ export function DamageView({
               </a>
             )}
           </section>
-          {channels.map((channel) => (
-            <section className="damage-panel" key={channel}>
-              <h2>
-                {admin
-                  ? channel === "tenant"
-                    ? "Nachrichten mit dem Mieter"
-                    : "Rückfragen zur Rechnung"
-                  : t.conversation}
-              </h2>
-              <div className="damage-messages" aria-live="polite">
-                {messages
-                  .filter((message) => message.channel === channel)
-                  .map((message) => (
-                    <article
-                      className={`damage-message ${message.authorRole === user.role ? "own-message" : ""}`}
-                      key={message.id}
-                    >
-                      <div>
-                        <strong>
-                          {message.authorRole === "admin"
-                            ? t.administration
-                            : message.authorName}
-                        </strong>
-                        <time dateTime={message.createdAt}>
-                          {date(message.createdAt, language)}
-                        </time>
-                      </div>
-                      <p dir="auto">{message.body}</p>
-                    </article>
-                  ))}
-              </div>
-              {!owner && (
-                <DamageMessageForm
-                  id={report.id}
-                  channel={channel}
+          {channels.map((channel) => {
+            const assignmentId = channel === "owner" ? ownerAssignmentId : null;
+            const currentMessages = messages.filter(
+              (message) =>
+                message.channel === channel &&
+                message.ownerAssignmentId === assignmentId &&
+                (channel === "tenant" || assignmentId !== null),
+            );
+            const canWrite = writableMessageChannels.includes(channel);
+            if (!canWrite && currentMessages.length === 0) return null;
+            return (
+              <section className="damage-panel" key={channel}>
+                <h2>
+                  {admin
+                    ? channel === "tenant"
+                      ? "Nachrichten mit dem Mieter"
+                      : "Nachrichten mit dem Eigentümer"
+                    : t.conversation}
+                </h2>
+                <DamageMessageHistory
+                  messages={currentMessages}
                   language={language}
+                  role={user.role}
                 />
-              )}
-            </section>
-          ))}
+                {canWrite && (
+                  <DamageMessageForm
+                    key={assignmentId ?? channel}
+                    id={report.id}
+                    channel={channel}
+                    language={language}
+                    ownerAssignmentId={assignmentId ?? undefined}
+                  />
+                )}
+              </section>
+            );
+          })}
+          {ownerArchive.length > 0 &&
+            archivedAssignments.map(({ id, name }) => {
+              const history = ownerArchive.filter(
+                (message) => message.ownerAssignmentId === id,
+              );
+              if (!history.length) return null;
+              return (
+                <section className="damage-panel" key={id ?? "legacy"}>
+                  <h2>{id ? `Frühere Nachrichten mit ${name}` : name}</h2>
+                  <DamageMessageHistory
+                    messages={history}
+                    language={language}
+                    role={user.role}
+                  />
+                </section>
+              );
+            })}
         </div>
         <div className="damage-side">
           {admin && (

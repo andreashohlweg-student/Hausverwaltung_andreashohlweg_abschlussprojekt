@@ -242,14 +242,41 @@ export async function checkDamages({
     ).status,
     404,
   );
+  const activeOwnerMessage = {
+    id: randomUUID(),
+    channel: "owner",
+    body: `Rückfrage zum laufenden Fall ${run}`,
+    ownerAssignmentId: (await owner.request(route)).json.ownerAssignmentId,
+  };
+  assert.ok(activeOwnerMessage.ownerAssignmentId);
+  const ownerActiveView = await owner.request(`/portal/schaeden/${reportId}`);
+  assert.ok(ownerActiveView.text.includes('name="body"'));
   assert.equal(
     (
       await owner.request(`${route}/messages`, {
         method: "POST",
-        body: { id: randomUUID(), channel: "owner", body: "Zu früh" },
+        body: activeOwnerMessage,
       })
     ).status,
-    409,
+    200,
+  );
+  const administrationReply = {
+    ...activeOwnerMessage,
+    id: randomUUID(),
+    body: `Antwort der Verwaltung ${run}`,
+  };
+  assert.equal(
+    (
+      await admin.request(`${route}/messages`, {
+        method: "POST",
+        body: administrationReply,
+      })
+    ).status,
+    200,
+  );
+  assert.deepEqual(
+    (await owner.request(route)).json.messages.map((message) => message.id),
+    [activeOwnerMessage.id, administrationReply.id],
   );
   assert.equal((await tenant.request(`${route}/invoice`)).status, 403);
   assert.equal((await owner.request(`${route}/invoice`)).status, 404);
@@ -362,6 +389,7 @@ export async function checkDamages({
     id: randomUUID(),
     channel: "owner",
     body: `Private Rechnungsfrage ${run}`,
+    ownerAssignmentId: activeOwnerMessage.ownerAssignmentId,
   };
   assert.equal(
     (
@@ -376,6 +404,7 @@ export async function checkDamages({
     id: randomUUID(),
     channel: "owner",
     body: "Die Position umfasst das Material.",
+    ownerAssignmentId: activeOwnerMessage.ownerAssignmentId,
   };
   assert.equal(
     (
@@ -399,6 +428,7 @@ export async function checkDamages({
   const ownerView = await owner.request(`/portal/schaeden/${reportId}`);
   assert.equal(ownerView.status, 200);
   assert.ok(!ownerView.text.includes(tenantMessage.body));
+  assert.ok(ownerView.text.includes(activeOwnerMessage.body));
   assert.ok(ownerView.text.includes(invoiceMessage.body));
   assert.ok(!ownerView.text.includes('name="body"'));
   report = (await admin.request(route)).json.report;
@@ -473,7 +503,23 @@ export async function checkDamages({
   );
   independent = (await admin.request(independentRoute)).json.report;
   assert.equal(independent.ownerId, ids.owner);
-  assert.equal((await owner.request(independentRoute)).status, 200);
+  const oldOwnerCase = await owner.request(independentRoute);
+  assert.equal(oldOwnerCase.status, 200);
+  const privateBeforeTransfer = {
+    ...activeOwnerMessage,
+    id: randomUUID(),
+    body: `Verlauf des früheren Eigentümers ${run}`,
+    ownerAssignmentId: oldOwnerCase.json.ownerAssignmentId,
+  };
+  assert.equal(
+    (
+      await owner.request(`${independentRoute}/messages`, {
+        method: "POST",
+        body: privateBeforeTransfer,
+      })
+    ).status,
+    200,
+  );
 
   // A failed aggregate write must also roll back its case-assignment changes.
   const invalidMaster = (await admin.request("/api/data")).json;
@@ -562,7 +608,23 @@ export async function checkDamages({
     ).status,
     200,
   );
-  assert.equal((await otherOwner.request(independentRoute)).status, 200);
+  const newOwnerCase = await otherOwner.request(independentRoute);
+  assert.equal(newOwnerCase.status, 200);
+  assert.deepEqual(newOwnerCase.json.messages, []);
+  assert.ok(
+    (await admin.request(independentRoute)).json.messages.some(
+      (message) => message.id === privateBeforeTransfer.id,
+    ),
+  );
+  assert.equal(
+    (
+      await admin.request(`${independentRoute}/messages`, {
+        method: "POST",
+        body: { ...privateBeforeTransfer, id: randomUUID() },
+      })
+    ).status,
+    409,
+  );
   assert.deepEqual(
     (await otherOwner.request(independentRoute)).json.ownerAssignments,
     [],
@@ -599,7 +661,7 @@ export async function checkDamages({
   assert.ok(assignmentPage.text.includes("Eigentümer zuordnen"));
   assert.ok(assignmentPage.text.includes("Eigentümerhistorie"));
   pass(
-    "Nur die Verwaltung ordnet Fälle zu; Zuordnung und Rechnungsschutz gelten für Liste, Detail und PDF",
+    "Neue Eigentümer sehen frühere Nachrichten nicht; Antworten aus alten Formularen werden abgewiesen",
   );
 
   // Detach without deleting the case, then assign a contact who has no login yet.

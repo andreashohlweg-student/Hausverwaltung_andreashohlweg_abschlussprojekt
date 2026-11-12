@@ -7,7 +7,6 @@ import {
   type DamageSummary,
   type DamageLanguage,
   type InvoiceSnapshot,
-  type MessageChannel,
 } from "@/lib/damage";
 import {
   getPool,
@@ -17,12 +16,16 @@ import {
 } from "./db";
 import { RequestError } from "./errors";
 import { renderDamageInvoice } from "./damage-invoice";
-import type { DamageUpdate } from "./damage-validation";
+import type { DamageMessageInput, DamageUpdate } from "./damage-validation";
 import { requireAdministrator } from "./policies/accounts";
 import * as cases from "./repositories/damages";
 import * as assignments from "./repositories/assignments";
 import { findTenantHome } from "./repositories/housing";
-import { publicReport, assertMessageChannel } from "./policies/damages";
+import {
+  publicReport,
+  assertMessageChannel,
+  writableMessageChannels,
+} from "./policies/damages";
 
 async function requireCase(
   client: DatabaseClient,
@@ -56,6 +59,8 @@ export async function loadDamage(
     return {
       report: publicReport(row, user),
       messages,
+      ownerAssignmentId: user.role === "tenant" ? null : row.ownerAssignmentId,
+      writableMessageChannels: writableMessageChannels(row, user.role),
       events: events.map((event) => ({
         ...event,
         actorName: user.role === "admin" ? event.actorName : null,
@@ -219,27 +224,37 @@ export async function updateDamage(
 export async function addDamageMessage(
   id: string,
   user: AppUser,
-  input: { id: string; channel: MessageChannel; body: string },
+  input: DamageMessageInput,
 ) {
   return transaction(async (client) => {
     await lockApplicationState(client);
     const report = await requireCase(client, id, user, true);
-    assertMessageChannel(
-      report.messageChannels,
-      input.channel,
-      report.status,
-      user.role,
-    );
+    assertMessageChannel(report, input.channel, user.role);
+    const ownerAssignmentId =
+      input.channel === "owner" ? report.ownerAssignmentId : null;
+    if (
+      input.channel === "owner" &&
+      input.ownerAssignmentId !== ownerAssignmentId
+    )
+      throw new RequestError(
+        "Die Eigentümerzuordnung hat sich geändert. Bitte lade den Fall neu.",
+        409,
+      );
     const previous = await cases.findMessageIdentity(client, input.id);
     if (previous) {
       if (
         previous.author_id !== user.id ||
         previous.damage_id !== id ||
         previous.channel !== input.channel ||
+        previous.owner_assignment_id !== ownerAssignmentId ||
         previous.body !== input.body
       )
         throw new RequestError("Diese Nachricht wurde bereits verwendet.", 409);
-    } else await cases.insertMessage(client, id, user, input);
+    } else
+      await cases.insertMessage(client, id, user, {
+        ...input,
+        ownerAssignmentId,
+      });
   });
 }
 

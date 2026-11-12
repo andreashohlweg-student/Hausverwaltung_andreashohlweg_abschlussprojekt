@@ -46,4 +46,9 @@ export const damageMessageRequest = z.object({
   id: z.uuid(),
   channel: z.enum(["tenant", "owner"]),
   body: text(6000),
+  ownerAssignmentId: z
+    .string()
+    .regex(/^[1-9][0-9]{0,18}$/)
+    .optional(),
 });
+export type DamageMessageInput = z.infer<typeof damageMessageRequest>;

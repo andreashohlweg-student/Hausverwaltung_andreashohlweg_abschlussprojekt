@@ -274,6 +274,21 @@ try {
       if (example.status === "invoiced") {
         report = (await admin.ok(`/api/damages/${example.id}`)).data.report;
         if (report.status === "in_progress") {
+          const { ownerAssignmentId } = (
+            await owner.ok(`/api/damages/${example.id}`)
+          ).data;
+          await owner.ok(`/api/damages/${example.id}/messages`, "POST", {
+            id: messageId(3),
+            channel: "owner",
+            ownerAssignmentId,
+            body: "Sind Material und Montage für den Austausch eingeplant?",
+          });
+          await admin.ok(`/api/damages/${example.id}/messages`, "POST", {
+            id: messageId(4),
+            channel: "owner",
+            ownerAssignmentId,
+            body: "Ja, Material und Montage sind eingeplant.",
+          });
           const serviceDate = new Intl.DateTimeFormat("sv-SE", {
             timeZone: "Europe/Berlin",
           }).format(new Date());
@@ -296,16 +311,6 @@ try {
             },
           });
         }
-        await owner.ok(`/api/damages/${example.id}/messages`, "POST", {
-          id: messageId(3),
-          channel: "owner",
-          body: "Ist das Material im Rechnungsbetrag bereits enthalten?",
-        });
-        await admin.ok(`/api/damages/${example.id}/messages`, "POST", {
-          id: messageId(4),
-          channel: "owner",
-          body: "Ja, der Betrag umfasst den Wasserhahn und die Montage.",
-        });
       }
     }
     state.examples ??= {};

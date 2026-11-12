@@ -14,6 +14,7 @@ import type { DatabaseClient } from "../db";
 export interface DamageRow extends DamageSummary {
   reporterId: string | null;
   currentOwnerId: string | null;
+  ownerAssignmentId: string | null;
   messageChannels: MessageChannel[];
   canManage: boolean;
   canReadInvoice: boolean;
@@ -24,7 +25,7 @@ const selectDamage = `SELECT d.id,d.property_id AS "propertyId",p.owner_id AS "c
   d.assignee_id AS "assigneeId",a.name AS "assigneeName",d.service_ordered AS "serviceOrdered",
   d.created_at::text AS "createdAt",d.updated_at::text AS "updatedAt",i.number AS "invoiceNumber",
   own.owner_id AS "ownerId",CASE WHEN i.damage_id IS NOT NULL THEN i.details->>'recipientName' ELSE coalesce(o.name,own.owner_name) END AS "ownerName",r.name AS "reporterName",
-  access.message_channels AS "messageChannels",access.can_manage AS "canManage",
+  own.id::text AS "ownerAssignmentId",access.message_channels AS "messageChannels",access.can_manage AS "canManage",
   access.can_read_invoice AS "canReadInvoice"
   FROM hausportal.damages d
   JOIN hausportal.damage_access access ON access.damage_id=d.id AND access.user_id=$1
@@ -62,10 +63,14 @@ export async function findMessages(
   userId: string,
 ) {
   const { rows } = await client.query<DamageMessage>(
-    `SELECT m.id,m.channel,m.author_name AS "authorName",m.author_role AS "authorRole",m.body,m.created_at::text AS "createdAt"
+    `SELECT m.id,m.channel,m.owner_assignment_id::text AS "ownerAssignmentId",
+      m.author_name AS "authorName",m.author_role AS "authorRole",m.body,m.created_at::text AS "createdAt"
      FROM hausportal.damage_messages m
      JOIN hausportal.damage_access access ON access.damage_id=m.damage_id AND access.user_id=$2
-     WHERE m.damage_id=$1 AND m.channel=ANY(access.message_channels) ORDER BY m.created_at,m.id`,
+     LEFT JOIN hausportal.damage_owner_assignments a ON a.damage_id=m.damage_id AND a.ended_at IS NULL
+     WHERE m.damage_id=$1 AND m.channel=ANY(access.message_channels)
+       AND (access.can_manage OR m.channel='tenant' OR m.owner_assignment_id=a.id)
+     ORDER BY m.created_at,m.id`,
     [id, userId],
   );
   return rows;
@@ -179,10 +184,11 @@ export async function findMessageIdentity(client: DatabaseClient, id: string) {
   const { rows } = await client.query<{
     author_id: string | null;
     damage_id: string;
+    owner_assignment_id: string | null;
     channel: string;
     body: string;
   }>(
-    "SELECT author_id,damage_id,channel,body FROM hausportal.damage_messages WHERE id=$1",
+    "SELECT author_id,damage_id,owner_assignment_id::text,channel,body FROM hausportal.damage_messages WHERE id=$1",
     [id],
   );
   return rows[0];
@@ -192,11 +198,26 @@ export async function insertMessage(
   client: DatabaseClient,
   id: string,
   user: AppUser,
-  input: { id: string; channel: MessageChannel; body: string },
+  input: {
+    id: string;
+    channel: MessageChannel;
+    body: string;
+    ownerAssignmentId: string | null;
+  },
 ) {
   await client.query(
-    `INSERT INTO hausportal.damage_messages(id,damage_id,channel,author_id,author_name,author_role,body) VALUES($1,$2,$3,$4,$5,$6,$7)`,
-    [input.id, id, input.channel, user.id, user.name, user.role, input.body],
+    `INSERT INTO hausportal.damage_messages(id,damage_id,channel,author_id,author_name,author_role,body,owner_assignment_id)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+    [
+      input.id,
+      id,
+      input.channel,
+      user.id,
+      user.name,
+      user.role,
+      input.body,
+      input.ownerAssignmentId,
+    ],
   );
 }
 
