@@ -70,7 +70,6 @@ export default async function OwnerBuildingPage({
         <DamageList
           reports={groups[filter]}
           language={language}
-          owner
           buildingContext={{ id: property.id, filter }}
         />
       </section>

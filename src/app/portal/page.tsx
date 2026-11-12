@@ -104,11 +104,7 @@ export default async function PortalPage() {
         <div className="section-heading">
           <h2>{t.reports}</h2>
         </div>
-        <DamageList
-          reports={reports}
-          language={language}
-          owner={user.role === "owner"}
-        />
+        <DamageList reports={reports} language={language} />
       </section>
     </>
   );

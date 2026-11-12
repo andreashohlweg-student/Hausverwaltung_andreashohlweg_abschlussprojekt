@@ -24,13 +24,11 @@ export function DamageList({
   reports,
   language,
   admin = false,
-  owner = false,
   buildingContext,
 }: {
   reports: DamageSummary[];
   language: DamageLanguage;
   admin?: boolean;
-  owner?: boolean;
   buildingContext?: { id: string; filter: BuildingDamageFilter };
 }) {
   const t = damageText[language];
@@ -39,12 +37,8 @@ export function DamageList({
       {reports.length ? (
         reports.map((report) => {
           const caseHref = `${admin ? "/schaeden" : "/portal/schaeden"}/${report.id}${buildingContext ? `?gebaeude=${encodeURIComponent(buildingContext.id)}&filter=${buildingContext.filter}` : ""}`;
-          const buildingHref =
-            owner && report.propertyId
-              ? `/portal/gebaeude/${encodeURIComponent(report.propertyId)}`
-              : undefined;
-          const content = (
-            <>
+          return (
+            <Link className="damage-list-card" key={report.id} href={caseHref}>
               <div className="damage-card-meta">
                 <span className={`badge damage-status-${report.status}`}>
                   {t.statuses[report.status]}
@@ -53,15 +47,7 @@ export function DamageList({
                   {date(report.createdAt, language)}
                 </time>
               </div>
-              <h3>
-                {buildingHref ? (
-                  <Link className="damage-building-link" href={buildingHref}>
-                    {report.location}
-                  </Link>
-                ) : (
-                  report.location
-                )}
-              </h3>
+              <h3>{report.location}</h3>
               <p>{report.description}</p>
               {admin && (
                 <span className="cell-secondary">
@@ -70,21 +56,6 @@ export function DamageList({
                   {report.ownerName ?? "Ohne Eigentümer"}
                 </span>
               )}
-            </>
-          );
-          return buildingHref ? (
-            <article
-              className="damage-list-card owner-damage-card"
-              key={report.id}
-            >
-              {content}
-              <Link className="owner-damage-case-link" href={caseHref}>
-                {language === "de" ? "Schadensmeldung öffnen" : "Open report"}
-              </Link>
-            </article>
-          ) : (
-            <Link className="damage-list-card" key={report.id} href={caseHref}>
-              {content}
             </Link>
           );
         })
@@ -133,7 +104,7 @@ export function DamageView({
         {t.back}
       </Link>
       <div className="page-heading">
-        <h1>{admin ? "Schadensmeldung" : t.reports}</h1>
+        <h1>{language === "de" ? "Schadensmeldung" : "Reported problem"}</h1>
       </div>
       {created && user.role === "tenant" && (
         <p className="success-notice" role="status">
@@ -150,7 +121,10 @@ export function DamageView({
               {user.role === "owner" && report.propertyId ? (
                 <Link
                   className="damage-building-link"
-                  href={`/portal/gebaeude/${encodeURIComponent(report.propertyId)}`}
+                  href={
+                    backHref ??
+                    `/portal/gebaeude/${encodeURIComponent(report.propertyId)}`
+                  }
                 >
                   {report.location}
                 </Link>

@@ -1730,22 +1730,7 @@ tbody tr:hover {
   margin-left: 8px;
   font-size: 11px;
 }
-.owner-damage-card {
-  position: relative;
-}
-.owner-damage-case-link {
-  color: var(--green);
-  font-size: 12px;
-}
-.owner-damage-case-link::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: var(--radius);
-}
 .damage-building-link {
-  position: relative;
-  z-index: 1;
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
