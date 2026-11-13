@@ -117,9 +117,11 @@ export const damageText = {
     error: "Senden fehlgeschlagen. Bitte versuche es erneut.",
     missing:
       "Deiner Wohnung ist noch kein Gebäude zugeordnet. Bitte kontaktiere die Verwaltung.",
-    administration: "Verwaltung",
-    tenant: "Mieter",
-    owner: "Eigentümer",
+    messageAuthorRoles: {
+      admin: "Verwaltung",
+      tenant: "Mieter/in",
+      owner: "Eigentümer/in",
+    },
     statuses: {
       created: "Angelegt",
       in_progress: "In Bearbeitung",
@@ -150,9 +152,11 @@ export const damageText = {
     error: "Could not send. Please try again.",
     missing:
       "Your apartment has no building assigned yet. Please contact property management.",
-    administration: "Property management",
-    tenant: "Tenant",
-    owner: "Owner",
+    messageAuthorRoles: {
+      admin: "Property management",
+      tenant: "Tenant",
+      owner: "Owner",
+    },
     statuses: {
       created: "Reported",
       in_progress: "In progress",

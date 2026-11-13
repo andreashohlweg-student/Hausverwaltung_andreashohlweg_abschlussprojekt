@@ -31,6 +31,7 @@ function DamageMessageHistory({
   language: DamageLanguage;
   role: AppUser["role"];
 }) {
+  const authorRoles = damageText[language].messageAuthorRoles;
   return (
     <div className="damage-messages" aria-live="polite">
       {messages.map((message) => (
@@ -40,9 +41,7 @@ function DamageMessageHistory({
         >
           <div>
             <strong>
-              {message.authorRole === "admin"
-                ? damageText[language].administration
-                : message.authorName}
+              {message.authorName} ({authorRoles[message.authorRole]})
             </strong>
             <time dateTime={message.createdAt}>
               {date(message.createdAt, language)}
