@@ -9,6 +9,7 @@ export type DamageLanguage = "de" | "en";
 export type MessageChannel = "tenant" | "owner";
 export interface DamageSummary {
   id: string;
+  unreadCount?: number;
   propertyId: string | null;
   location: string;
   description: string;

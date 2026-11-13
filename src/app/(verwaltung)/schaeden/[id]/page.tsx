@@ -3,7 +3,10 @@ import { requireAdmin, RequestError } from "@/lib/server/access";
 import { damageId } from "@/lib/server/damage-http";
 import { loadDamage } from "@/lib/server/damages";
 import { DamageView } from "@/components/damage-view";
-import { DamageRefresh } from "@/components/damage-forms";
+import {
+  DamageRefresh,
+  MarkDamageMessagesRead,
+} from "@/components/damage-forms";
 import { ownerOptions } from "@/lib/server/records";
 export const metadata = { title: "Schadensmeldung" };
 export default async function DamagePage({
@@ -18,6 +21,12 @@ export default async function DamagePage({
     return (
       <>
         <DamageRefresh />
+        <MarkDamageMessagesRead
+          id={detail.report.id}
+          messageIds={detail.messages
+            .filter((message) => message.authorRole !== "admin")
+            .map((message) => message.id)}
+        />
         <DamageView detail={detail} user={user} language="de" owners={owners} />
       </>
     );

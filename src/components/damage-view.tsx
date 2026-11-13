@@ -79,6 +79,18 @@ export function DamageList({
                 <time dateTime={report.createdAt}>
                   {date(report.createdAt, language)}
                 </time>
+                {!!report.unreadCount && (
+                  <span
+                    className="damage-unread-count"
+                    aria-label={
+                      language === "de"
+                        ? `${report.unreadCount} ungelesene Nachrichten`
+                        : `${report.unreadCount} unread messages`
+                    }
+                  >
+                    {report.unreadCount}
+                  </span>
+                )}
               </div>
               <h3>{report.location}</h3>
               <p>{report.description}</p>

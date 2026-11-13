@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { entities, withoutAssignment, type EntityKind } from "@/lib/domain";
 import { useData } from "./data-provider";
 import { Icon } from "./icon";
 
-export function Dashboard() {
+export function Dashboard({ damageCard }: { damageCard: ReactNode }) {
   const { data, ready } = useData();
   if (!ready)
     return (
@@ -83,7 +84,7 @@ export function Dashboard() {
 
       <section className="section">
         <div className="section-heading">
-          <h2>Offene Zuordnungen</h2>
+          <h2>Offene Vorgänge</h2>
         </div>
         <div className="assignment-grid">
           <Link
@@ -117,6 +118,7 @@ export function Dashboard() {
             </span>
             <Icon className="assignment-arrow" name="arrow" size={19} />
           </Link>
+          {damageCard}
         </div>
       </section>
     </>

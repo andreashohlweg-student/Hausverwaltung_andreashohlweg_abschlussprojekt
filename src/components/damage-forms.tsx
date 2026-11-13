@@ -502,3 +502,27 @@ export function DamageRefresh() {
   }, [router]);
   return null;
 }
+
+export function MarkDamageMessagesRead({
+  id,
+  messageIds,
+}: {
+  id: string;
+  messageIds: string[];
+}) {
+  const ids = JSON.stringify(messageIds);
+  useEffect(() => {
+    const parsedIds: string[] = JSON.parse(ids);
+    if (!parsedIds.length) return;
+    for (let offset = 0; offset < parsedIds.length; offset += 500) {
+      void fetch(`/api/damages/${id}/read`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messageIds: parsedIds.slice(offset, offset + 500),
+        }),
+      });
+    }
+  }, [id, ids]);
+  return null;
+}

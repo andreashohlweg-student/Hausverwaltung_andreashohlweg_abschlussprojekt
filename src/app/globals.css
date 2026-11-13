@@ -456,7 +456,8 @@ select:focus-visible {
 }
 .assignment-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
   gap: 17px;
 }
 .assignment-card {
@@ -512,6 +513,46 @@ select:focus-visible {
 .assignment-count.complete {
   background: var(--green-light);
   color: var(--green);
+}
+.assignment-card-damages {
+  flex-direction: column;
+  align-items: stretch;
+}
+.assignment-card-header {
+  display: flex;
+  align-items: center;
+  gap: inherit;
+}
+.assignment-card-header:hover,
+.assignment-damage-link:hover {
+  color: var(--green);
+}
+.assignment-damage-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.assignment-damage-list li {
+  border-top: 1px solid var(--line);
+}
+.assignment-damage-link {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  padding: 12px 0;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.assignment-damage-list li:last-child .assignment-damage-link {
+  padding-bottom: 0;
+}
+.assignment-damage-description {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  color: var(--muted);
 }
 .button {
   display: inline-flex;
@@ -1410,6 +1451,19 @@ tbody tr:hover {
 .damage-list-card:hover {
   border-color: #9cbab1;
   background: #fcfefd;
+}
+.damage-unread-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 999px;
+  color: white;
+  background: #c62828;
+  font-size: 12px;
+  font-weight: 700;
 }
 .damage-list-card h3 {
   font-size: 15px;

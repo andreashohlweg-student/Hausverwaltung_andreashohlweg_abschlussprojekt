@@ -5,7 +5,10 @@ import { loadDamage } from "@/lib/server/damages";
 import { damageLanguage } from "@/lib/server/damage-language";
 import { DamageView } from "@/components/damage-view";
 import { parseBuildingDamageFilter } from "@/lib/damage";
-import { DamageRefresh } from "@/components/damage-forms";
+import {
+  DamageRefresh,
+  MarkDamageMessagesRead,
+} from "@/components/damage-forms";
 export const metadata = { title: "Schadensmeldung" };
 export default async function DamagePage({
   params,
@@ -35,6 +38,12 @@ export default async function DamagePage({
     return (
       <>
         <DamageRefresh />
+        <MarkDamageMessagesRead
+          id={detail.report.id}
+          messageIds={detail.messages
+            .filter((message) => message.authorRole === "admin")
+            .map((message) => message.id)}
+        />
         <DamageView
           detail={detail}
           user={user}

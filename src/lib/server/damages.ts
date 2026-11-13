@@ -6,6 +6,7 @@ import {
   type DamageDetail,
   type DamageSummary,
   type DamageLanguage,
+  type DamageStatus,
   type InvoiceSnapshot,
 } from "@/lib/damage";
 import {
@@ -41,10 +42,22 @@ async function requireCase(
 
 export async function listDamages(
   user: AppUser,
-  propertyId?: string,
+  filter: { propertyId?: string; statuses?: readonly DamageStatus[] } = {},
 ): Promise<DamageSummary[]> {
-  const rows = await cases.findDamages(getPool(), user.id, { propertyId });
-  return rows.map((row) => publicReport(row, user));
+  const rows = await cases.findDamages(getPool(), user.id, filter);
+  const counts = await cases.findUnreadCounts(getPool(), user.id, user.role);
+  return rows.map((row) => ({
+    ...publicReport(row, user),
+    unreadCount: counts.get(row.id) ?? 0,
+  }));
+}
+
+export async function markDamageMessagesRead(
+  id: string,
+  user: AppUser,
+  messageIds: string[],
+) {
+  await cases.markMessagesRead(getPool(), user.id, user.role, id, messageIds);
 }
 
 export async function loadDamage(

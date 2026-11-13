@@ -22,7 +22,7 @@ export default async function OwnerBuildingPage({
   const language = await damageLanguage();
   const t = damageText[language];
   const filter = parseBuildingDamageFilter((await searchParams).filter);
-  const reports = await listDamages(user, property.id);
+  const reports = await listDamages(user, { propertyId: property.id });
   const groups = {
     all: reports,
     open: reports.filter((report) => report.status === "in_progress"),

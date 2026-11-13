@@ -40,12 +40,22 @@ const selectDamage = `SELECT d.id,d.property_id AS "propertyId",p.owner_id AS "c
 export async function findDamages(
   client: DatabaseClient,
   userId: string,
-  filter: { id?: string; propertyId?: string } = {},
+  filter: {
+    id?: string;
+    propertyId?: string;
+    statuses?: readonly DamageStatus[];
+  } = {},
 ) {
   const { rows } = await client.query<DamageRow>(
     `${selectDamage} WHERE ($2::uuid IS NULL OR d.id=$2) AND ($3::text IS NULL OR d.property_id=$3)
+    AND ($4::text[] IS NULL OR d.status=ANY($4))
     ORDER BY d.created_at DESC,d.id`,
-    [userId, filter.id ?? null, filter.propertyId ?? null],
+    [
+      userId,
+      filter.id ?? null,
+      filter.propertyId ?? null,
+      filter.statuses ?? null,
+    ],
   );
   return rows;
 }
@@ -89,6 +99,48 @@ export async function findEvents(
     [id, userId],
   );
   return rows;
+}
+
+export async function findUnreadCounts(
+  client: DatabaseClient,
+  userId: string,
+  role: AppUser["role"],
+) {
+  const { rows } = await client.query<{ damage_id: string; count: number }>(
+    `SELECT m.damage_id, count(*)::int AS count
+     FROM hausportal.damage_messages m
+     JOIN hausportal.damage_access a ON a.damage_id=m.damage_id AND a.user_id=$1
+     LEFT JOIN hausportal.damage_owner_assignments owner ON owner.damage_id=m.damage_id AND owner.ended_at IS NULL
+     LEFT JOIN hausportal.damage_message_reads r ON r.message_id=m.id AND r.role=$2
+     WHERE m.channel=ANY(a.message_channels)
+       AND (a.can_manage OR m.channel='tenant' OR m.owner_assignment_id=owner.id)
+       AND (($2='admin' AND m.author_role IN ('tenant','owner')) OR ($2 IN ('owner','tenant') AND m.author_role='admin'))
+       AND r.message_id IS NULL
+     GROUP BY m.damage_id`,
+    [userId, role],
+  );
+  return new Map(rows.map((row) => [row.damage_id, row.count]));
+}
+
+export async function markMessagesRead(
+  client: DatabaseClient,
+  userId: string,
+  role: AppUser["role"],
+  damageId: string,
+  messageIds: string[],
+) {
+  await client.query(
+    `INSERT INTO hausportal.damage_message_reads (message_id, role)
+     SELECT m.id, $2 FROM hausportal.damage_messages m
+     JOIN hausportal.damage_access a ON a.damage_id=m.damage_id AND a.user_id=$1
+     LEFT JOIN hausportal.damage_owner_assignments owner ON owner.damage_id=m.damage_id AND owner.ended_at IS NULL
+     WHERE m.damage_id=$3 AND m.id=ANY($4::uuid[])
+       AND m.channel=ANY(a.message_channels)
+       AND (a.can_manage OR m.channel='tenant' OR m.owner_assignment_id=owner.id)
+       AND (($2='admin' AND m.author_role IN ('tenant','owner')) OR ($2 IN ('owner','tenant') AND m.author_role='admin'))
+     ON CONFLICT DO NOTHING`,
+    [userId, role, damageId, messageIds],
+  );
 }
 
 export async function findOwnerHistory(

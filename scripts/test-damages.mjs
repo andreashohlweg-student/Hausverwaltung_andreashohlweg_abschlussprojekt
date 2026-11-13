@@ -278,6 +278,41 @@ export async function checkDamages({
     (await owner.request(route)).json.messages.map((message) => message.id),
     [activeOwnerMessage.id, administrationReply.id],
   );
+  const unread = async (session) =>
+    (await session.request("/api/damages")).json.reports.find(
+      (item) => item.id === reportId,
+    ).unreadCount;
+  const markRead = (session, messageIds) =>
+    session.request(`${route}/read`, { method: "POST", body: { messageIds } });
+  assert.equal(await unread(admin), 2);
+  assert.equal(await unread(owner), 1);
+  assert.equal(await unread(tenant), 1);
+  assert.equal((await markRead(owner, [tenantMessage.id])).status, 200);
+  assert.equal(await unread(tenant), 1);
+  assert.equal((await markRead(tenant, [tenantMessage.id])).status, 200);
+  assert.equal(await unread(tenant), 0);
+  assert.equal(await unread(owner), 1);
+  assert.equal((await markRead(owner, [administrationReply.id])).status, 200);
+  assert.equal(await unread(owner), 0);
+  assert.equal(await unread(admin), 2);
+  const adminMessages = (await admin.request(route)).json.messages.filter(
+    (message) => message.authorRole !== "admin",
+  );
+  assert.equal(
+    (
+      await markRead(
+        admin,
+        adminMessages.map((message) => message.id),
+      )
+    ).status,
+    200,
+  );
+  assert.equal(await unread(admin), 0);
+  assert.equal((await markRead(otherTenant, [tenantMessage.id])).status, 200);
+  assert.equal(await unread(tenant), 0);
+  pass(
+    "Ungelesene Nachrichten sind nach Rolle und Kanal getrennt und werden rollenweit gelesen",
+  );
   assert.equal((await tenant.request(`${route}/invoice`)).status, 403);
   assert.equal((await owner.request(`${route}/invoice`)).status, 404);
   pass(
