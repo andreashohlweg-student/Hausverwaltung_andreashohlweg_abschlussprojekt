@@ -160,10 +160,15 @@ export async function updateDamage(
     if (input.action === "claim") {
       if (status === "paid")
         throw new RequestError("Dieser Fall ist bereits abgeschlossen.", 409);
+      if (assigneeId)
+        throw new RequestError(
+          "Der Fall hat bereits einen Sachbearbeiter.",
+          409,
+        );
       assigneeId = user.id;
       if (status === "created") status = "in_progress";
     } else {
-      if (assigneeId !== user.id)
+      if (!assigneeId)
         throw new RequestError("Bitte übernimm zuerst den Fall.", 409);
       if (input.status && input.status !== status) {
         if (input.status !== nextDamageStatus(status))

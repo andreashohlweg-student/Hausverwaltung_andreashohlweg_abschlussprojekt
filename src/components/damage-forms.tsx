@@ -268,11 +268,9 @@ export function DamageOwnerForm({
 
 export function DamageAdminForm({
   report,
-  userId,
   today,
 }: {
   report: DamageSummary;
-  userId: string;
   today: string;
 }) {
   const router = useRouter();
@@ -284,7 +282,6 @@ export function DamageAdminForm({
   const busy = useRef(false);
   const totals = invoiceTotals(parseEuroCents(net) ?? 0, tax);
   const next = nextDamageStatus(report.status);
-  const isAssignee = report.assigneeId === userId;
   async function save(body: unknown) {
     if (busy.current) return;
     busy.current = true;
@@ -358,7 +355,7 @@ export function DamageAdminForm({
           </button>
         </div>
       )}
-      {!isAssignee && report.status !== "paid" && (
+      {!report.assigneeId && report.status !== "paid" && (
         <button
           className="button primary"
           disabled={saving}
@@ -369,7 +366,7 @@ export function DamageAdminForm({
           {saving ? "Wird gespeichert …" : "Fall übernehmen"}
         </button>
       )}
-      {isAssignee && report.status !== "paid" && (
+      {report.assigneeId && report.status !== "paid" && (
         <form className="damage-compose" onSubmit={submit}>
           <label className="field">
             <span>Status</span>

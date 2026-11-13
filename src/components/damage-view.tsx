@@ -247,7 +247,6 @@ export function DamageView({
             <DamageAdminForm
               key={report.version}
               report={report}
-              userId={user.id}
               today={new Intl.DateTimeFormat("sv-SE", {
                 timeZone: "Europe/Berlin",
               }).format(new Date())}

@@ -382,7 +382,7 @@ export async function checkDamages({
         body: { action: "claim", version: report.version },
       })
     ).status,
-    200,
+    409,
   );
   assert.equal((await admin.request(route)).json.report.status, "invoiced");
   const ownerMessage = {
